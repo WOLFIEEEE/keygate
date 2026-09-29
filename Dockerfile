@@ -15,7 +15,7 @@ RUN bun run build
 # expensive compile off QEMU. The small runtime stage still runs its apk
 # install under the target arch, so the arm64 image is faster to build but
 # not fully emulation-free.
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS backend
 RUN apk add --no-cache git
 WORKDIR /app
 COPY go.mod go.sum ./

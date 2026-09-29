@@ -18,6 +18,7 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      REDIS_URL: ${REDIS_URL:-}
     depends_on:
       postgres:
         condition: service_healthy

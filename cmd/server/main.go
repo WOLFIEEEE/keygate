@@ -234,12 +234,11 @@ func main() {
 
 	logger := newLogger(os.Stdout)
 
-	// Optional Redis-backed rate limiting
-	if cfg.RedisURL != "" {
-		logger.Info("Redis rate limiting enabled", "url", cfg.RedisURL)
-		// To enable: import github.com/redis/go-redis/v9 and uncomment:
-		// rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
-		// middleware.SetRateLimitBackend(middleware.NewRedisBackend(rdb))
+	// Optional Redis/Valkey backend for rate limiting shared across
+	// instances. Falls back to in-memory when REDIS_URL is unset or
+	// unreachable.
+	if redisClient := setupRedis(cfg.RedisURL, redisNamespace(cfg.BaseURL), logger); redisClient != nil {
+		defer func() { _ = redisClient.Close() }()
 	}
 
 	if cfg.StripeSecretKey != "" {
