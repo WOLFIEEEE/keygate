@@ -676,7 +676,8 @@ function ArtifactRow({
       <Badge variant="outline" className="font-mono text-[10px]">
         {artifact.platform}
       </Badge>
-      <span className="text-muted-foreground text-xs flex-1 truncate">
+      <span className="text-muted-foreground text-xs flex-1 truncate" title={artifact.filename || undefined}>
+        {artifact.filename && <span className="text-foreground">{artifact.filename} · </span>}
         {ready ? `${formatBytes(artifact.file_size)} · sha256:${artifact.sha256.slice(0, 12)}…` : "Not uploaded yet"}
       </span>
       {ready && artifact.ed25519_sig && (

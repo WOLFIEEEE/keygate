@@ -485,6 +485,16 @@ func requireProductCapability(prod *model.Product, capability, hint string) erro
 // caller decides whether to surface it (Activate path: yes, paid users
 // renewing) or collapse to licenseNotFound() (Verify / Deactivate: no,
 // avoid existence oracle).
+// LicenseUsable reports whether a licence's key works right now — the
+// rule activation and verification apply — for callers outside this
+// service: the admin resend of a key mails only one that works. It reads
+// nothing but the licence and its plan, and assertUsable must stay that
+// way for this to hold.
+func LicenseUsable(lic *model.License) error {
+	var s LicenseService
+	return s.assertUsable(lic)
+}
+
 func (s *LicenseService) assertUsable(lic *model.License) error {
 	now := time.Now()
 	switch lic.Status {

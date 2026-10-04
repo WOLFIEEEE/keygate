@@ -131,6 +131,11 @@ type Product struct {
 	// MinimumSupportedMessage: human-readable note shown alongside the
 	// forced-upgrade prompt (e.g. "old TLS protocol no longer accepted").
 	MinimumSupportedMessage string `bun:",notnull,default:''" json:"minimum_supported_message,omitempty"`
+	// DownloadURL is the vendor's own page where customers download the
+	// product, offered to email templates as {{.DownloadURL}}. A stable
+	// page, never a signed file link: those expire, can be forwarded,
+	// and skip the license check. Empty when not set.
+	DownloadURL string `bun:",notnull,default:''" json:"download_url"`
 
 	// RequireSigning: when true (the safe default for new products),
 	// publishing a release fails if no active signing key is configured.
@@ -317,6 +322,10 @@ type License struct {
 	PaymentProvider      string `json:"payment_provider,omitempty"`
 	StripeCustomerID     string `json:"stripe_customer_id,omitempty"`
 	StripeSubscriptionID string `bun:",unique,nullzero" json:"stripe_subscription_id,omitempty"`
+	// StripeSyncedAt is the newest read of the Stripe subscription whose
+	// answer has been applied to this licence (see
+	// store.UpdateLicenseFromSubscriptionRead); an older one is refused.
+	StripeSyncedAt *time.Time `bun:"stripe_synced_at" json:"-"`
 	// StripePaymentIntentID is the payment intent of the checkout session
 	// that created this license. charge.refunded carries the same id, so
 	// a refund can be matched to exactly this license.
@@ -341,6 +350,10 @@ type License struct {
 	UpdatesTermsSet bool       `bun:",notnull" json:"-"`
 	CanceledAt      *time.Time `json:"canceled_at,omitempty"`
 	SuspendedAt     *time.Time `json:"suspended_at,omitempty"`
+	// SuspendedBy says who suspended it: SuspendedByAdmin, which only an
+	// operator lifts, or SuspendedByStripe (a paused subscription), which
+	// Stripe lifts by resuming it. Empty when not suspended.
+	SuspendedBy string `bun:",nullzero" json:"suspended_by,omitempty"`
 	// PastDueAt anchors the dunning-email ladder. Set by the
 	// payment-failed handler when the license first enters past_due;
 	// cleared on recovery / cancellation. Reading lic.UpdatedAt as
@@ -388,6 +401,12 @@ const (
 	StatusExpired   = "expired"
 	StatusSuspended = "suspended"
 	StatusRevoked   = "revoked"
+)
+
+// Who suspended a licence (License.SuspendedBy).
+const (
+	SuspendedByAdmin  = "admin"
+	SuspendedByStripe = "stripe"
 )
 
 // ─── Activation ───
@@ -840,6 +859,10 @@ type ReleaseArtifact struct {
 	ReleaseID string `bun:",notnull" json:"release_id"`
 
 	Platform string `bun:",notnull" json:"platform"`
+	// Filename is the name the file had when it was uploaded, shown in
+	// the dashboard. Storage keys stay generated (see buildFileKey).
+	// Empty for artifacts uploaded before it was recorded.
+	Filename string `bun:",notnull,default:''" json:"filename"`
 
 	FileKey     string `bun:",notnull,default:''" json:"file_key"`
 	FileSize    int64  `bun:",notnull,default:0" json:"file_size"`

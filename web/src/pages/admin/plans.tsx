@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Copy, Package, Pencil, Plus, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
+import { CopyableId } from "@/components/copyable-id"
 import { ProductSelect } from "@/components/product-select"
 import { showToast } from "@/components/toast"
 import {
@@ -398,6 +399,7 @@ function PlanDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{t("plans.formDesc")}</DialogDescription>
+          {plan && <CopyableId id={plan.id} />}
         </DialogHeader>
         <form
           onSubmit={(e) => {

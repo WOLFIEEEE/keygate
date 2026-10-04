@@ -325,3 +325,30 @@ func TestEffectiveGraceDays(t *testing.T) {
 		t.Errorf("canceled: grace = %d, want 0", got)
 	}
 }
+
+// LicenseUsable is the activation rule for callers outside the service,
+// and gives the same answers.
+func TestLicenseUsableMatchesActivation(t *testing.T) {
+	past := time.Now().Add(-48 * time.Hour)
+	future := time.Now().Add(48 * time.Hour)
+	plan := &model.Plan{GraceDays: 7}
+	for _, lic := range []*model.License{
+		{Status: model.StatusActive, ValidUntil: &future, Plan: plan},
+		{Status: model.StatusActive, ValidUntil: &past, Plan: plan}, // within grace
+		{Status: model.StatusPastDue, ValidUntil: &future, Plan: plan},
+		{Status: model.StatusCanceled, ValidUntil: &future, Plan: plan},
+		{Status: model.StatusCanceled, ValidUntil: &past, Plan: plan},
+		{Status: model.StatusSuspended, ValidUntil: &future, Plan: plan},
+		{Status: model.StatusRevoked, ValidUntil: &future, Plan: plan},
+		{Status: model.StatusExpired, ValidUntil: &past, Plan: plan},
+	} {
+		svc := &LicenseService{}
+		want, got := svc.assertUsable(lic), LicenseUsable(lic)
+		if (want == nil) != (got == nil) || (want != nil && want.Error() != got.Error()) {
+			t.Errorf("%s until %v: LicenseUsable=%v, activation=%v", lic.Status, lic.ValidUntil, got, want)
+		}
+	}
+	if LicenseUsable(&model.License{Status: model.StatusRevoked}) == nil {
+		t.Fatal("revoked licence reported usable")
+	}
+}

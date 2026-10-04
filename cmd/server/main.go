@@ -262,6 +262,7 @@ func main() {
 	)
 	webhookSvc := service.NewWebhookService(db, logger, webhookHTTPTimeout, cfg.WebhookMaxAttempts, cfg.WebhookAllowPrivate)
 	emailSvc := service.NewEmailService(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPPassword, cfg.SMTPFrom, logger, db)
+	emailSvc.SetBaseURL(cfg.BaseURL)
 	// LICENSE_SIGNING_KEY is a 32-byte ed25519 seed in hex. Parsed
 	// once here so an invalid value fails fast at startup rather
 	// than the first /license/activate call.
@@ -512,6 +513,9 @@ func main() {
 	// Periodic Stripe checkout sync — catches missed webhooks
 	if cfg.StripeSecretKey != "" {
 		go func() {
+			// Unblock the reminders for subscriptions whose cancel state
+			// predates this release without waiting a tick.
+			stripeH.SyncCancelStates(ctx)
 			ticker := time.NewTicker(5 * time.Minute)
 			defer ticker.Stop()
 			for {
@@ -522,6 +526,7 @@ func main() {
 					stripeH.SyncRecentCheckouts(ctx)
 					stripeH.SyncPendingCheckouts(ctx)
 					stripeH.RetireReplacedEndpoint(ctx)
+					stripeH.SyncCancelStates(ctx)
 				}
 			}
 		}()
@@ -792,8 +797,14 @@ func main() {
 		auth.POST("/otp/verify", authH.OTPVerify)
 		auth.POST("/dev-login", authH.DevLogin)
 		auth.POST("/logout", middleware.SessionAuth(cfg.JWTSecret, db.FindUserIsAdmin), authH.Logout)
-		auth.POST("/refresh", authH.Refresh)
 	}
+	// Session renewal has a bucket of its own. The dashboard renews
+	// silently, so every page load of a signed-out visitor tries it once;
+	// in the group bucket that would spend the login budget an office
+	// behind one NAT address shares.
+	v1.POST("/auth/refresh",
+		middleware.RateLimitByIPScoped("auth_refresh", cfg.RateLimitAuth, time.Minute),
+		authH.Refresh)
 
 	// Anonymous plan catalogue for a pricing page — the visitor has no
 	// account yet, so /portal/plans (session-gated) can't serve them.

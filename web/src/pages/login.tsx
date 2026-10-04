@@ -1,6 +1,7 @@
 import { Mail, Terminal } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Navigate } from "react-router-dom"
+import { ServiceUnavailableScreen } from "@/components/service-unavailable"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -14,7 +15,7 @@ import { auth } from "@/lib/api"
 export default function LoginPage() {
   const { t } = useI18n()
   const { site_name, logo_url, attribution_text, attribution_url } = useSiteConfig()
-  const { user, loading, refetch } = useAuth()
+  const { user, loading, unavailable, refetch } = useAuth()
   const [devLogin, setDevLogin] = useState(false)
   const [devEmail, setDevEmail] = useState("admin@keygate.dev")
   const [devName, setDevName] = useState("Admin")
@@ -104,6 +105,9 @@ export default function LoginPage() {
 
   if (loading) return null
   if (user) return <Navigate to={user.is_admin ? "/admin" : "/portal"} replace />
+  // A signed-in user whose session cannot be confirmed right now would
+  // otherwise be shown a login form they do not need.
+  if (unavailable) return <ServiceUnavailableScreen onRetry={refetch} />
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-muted/30">

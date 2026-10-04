@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Cloud, Laptop, Layers, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { useState } from "react"
+import { CopyableId } from "@/components/copyable-id"
 import { HelpTip } from "@/components/help-tip"
 import { showToast } from "@/components/toast"
 import {
@@ -229,7 +230,13 @@ function ProductDialog({
   open: boolean
   onClose: () => void
   product?: Product
-  onSubmit: (data: { name: string; slug: string; type: string; feed_license_required?: boolean }) => void
+  onSubmit: (data: {
+    name: string
+    slug: string
+    type: string
+    feed_license_required?: boolean
+    download_url?: string
+  }) => void
   loading: boolean
   title: string
 }) {
@@ -238,10 +245,11 @@ function ProductDialog({
   const [slug, setSlug] = useState(product?.slug || "")
   const [type, setType] = useState(product?.type || "desktop")
   const [feedLicenseRequired, setFeedLicenseRequired] = useState(product?.feed_license_required ?? false)
+  const [downloadURL, setDownloadURL] = useState(product?.download_url ?? "")
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onSubmit({ name, slug, type, feed_license_required: feedLicenseRequired })
+    onSubmit({ name, slug, type, feed_license_required: feedLicenseRequired, download_url: downloadURL.trim() })
   }
 
   return (
@@ -250,6 +258,7 @@ function ProductDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{t("products.formDesc")}</DialogDescription>
+          {product && <CopyableId id={product.id} />}
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-4">
           <DialogBody className="space-y-4">
@@ -327,6 +336,18 @@ function ProductDialog({
                 <p className="text-xs text-muted-foreground">{t("products.feedLicenseRequiredHint")}</p>
               </div>
             )}
+            <div className="space-y-2">
+              <Label htmlFor="product-download-url">{t("products.downloadURL")}</Label>
+              <Input
+                id="product-download-url"
+                type="url"
+                inputMode="url"
+                placeholder="https://example.com/download"
+                value={downloadURL}
+                onChange={(e) => setDownloadURL(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">{t("products.downloadURLHint")}</p>
+            </div>
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
