@@ -244,7 +244,7 @@ export default function EmailTemplatesManager() {
 
       {/* Preview Dialog — uses sandboxed iframe for safe HTML rendering */}
       <Dialog open={!!previewing} onOpenChange={(open) => !open && setPreviewing(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl h-[min(760px,85vh)]">
           <DialogHeader>
             <DialogTitle>
               {t("settings.templatePreview")}: {previewing && TEMPLATE_META[previewing]?.label}

@@ -370,6 +370,21 @@ func main() {
 					MaxSignSize: cfg.MaxReleaseSignSize,
 				})
 				logger.Info("release signing: enabled", "max_sign_mb", cfg.MaxReleaseSignSize/(1024*1024))
+
+				// Artifacts signed before Tauri signatures were stored get
+				// one from the key that signed them. Non-blocking and
+				// idempotent, like the license key backfill above.
+				go func() {
+					n, err := releaseSigner.BackfillTauriSignatures(context.Background())
+					if err != nil {
+						logger.Warn("tauri signature backfill failed (will retry next start)",
+							"filled_so_far", n, "error", err)
+						return
+					}
+					if n > 0 {
+						logger.Info("tauri signature backfill complete", "filled", n)
+					}
+				}()
 			}
 		}
 	} else {
@@ -673,6 +688,9 @@ func main() {
 		if settings == nil {
 			settings = make(map[string]string)
 		}
+		// The public address clients reach this server at, for the
+		// dashboard to show copyable feed URLs.
+		settings["base_url"] = cfg.BaseURL
 		// Attribution: AGPL v3 Section 7(b) — see NOTICE
 		settings["attribution_text"] = branding.Tagline
 		settings["attribution_url"] = branding.URL
@@ -772,6 +790,7 @@ func main() {
 	}
 	v1.GET("/releases/:product_slug/feed.xml", append(feedMW, releasePublicH.FeedSparkle)...)
 	v1.GET("/releases/:product_slug/feed.json", append(feedMW, releasePublicH.FeedVelopack)...)
+	v1.GET("/releases/:product_slug/velopack/*path", append(feedMW, releasePublicH.FeedVelopackIndex)...)
 	v1.GET("/releases/:product_slug/upgrade.json", append(feedMW, releasePublicH.FeedTauri)...)
 
 	// Old /releases/feed.* (no product slug, license-key auth) → 410 Gone
@@ -1068,7 +1087,7 @@ func main() {
 
 		// Self-service activation management — solves the "I lost my
 		// laptop, my activation slot is stuck" support ticket.
-		portalActH := handler.NewPortalActivationsHandler(db)
+		portalActH := handler.NewPortalActivationsHandler(db, webhookSvc)
 		portal.GET("/licenses/:license_key/activations", portalActH.List)
 		portal.DELETE("/licenses/:license_key/activations/:activation_id", portalActH.Delete)
 

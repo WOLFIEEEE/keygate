@@ -122,6 +122,19 @@ export const site = {
 }
 
 // ─── Auth ───
+// First run setup. Public: the server refuses initialize once an owner exists.
+export const setup = {
+  status: () => get<{ needed: boolean; step: string }>("/setup/status"),
+  initialize: (body: {
+    admin_name: string
+    admin_email: string
+    site_name: string
+    product_name: string
+    product_slug: string
+    product_type: "desktop" | "saas" | "hybrid"
+  }) => post<{ user: unknown; product: unknown; plan: unknown }>("/setup/initialize", body),
+}
+
 export const auth = {
   me: () =>
     get<{ id: string; email: string; name: string; avatar_url: string; is_admin: boolean; role: string }>("/portal/me"),
@@ -564,6 +577,8 @@ export const admin = {
       body: JSON.stringify({ note }),
     }),
   publicKeyURL: (productId: string) => `${BASE}/admin/products/${productId}/signing-key/public.pem`,
+  tauriPublicKey: (productId: string) =>
+    get<{ pubkey: string }>(`/admin/products/${productId}/signing-key/tauri-pubkey`),
 }
 
 // ─── Types ───

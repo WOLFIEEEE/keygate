@@ -577,7 +577,7 @@ func (s *ReleaseService) Publish(ctx context.Context, releaseID string) (*model.
 	if !signRelease && prod.RequireSigning {
 		return nil, apperr.New(409, "SIGNING_NOT_CONFIGURED",
 			"this product requires release signing — generate a signing key, "+
-				"or set require_signing=false to ship unsigned releases")
+				"or turn off \"Block publishing without a signing key\" in Update settings (require_signing=false) to ship unsigned releases")
 	}
 	if !signRelease {
 		// Shipping unsigned (require_signing=false, no active key): drop
@@ -617,7 +617,7 @@ func (s *ReleaseService) Publish(ctx context.Context, releaseID string) (*model.
 					return nil, apperr.Internal(err)
 				}
 			}
-			if storeErr := s.store.UpdateArtifactSignature(ctx, a.ID, result.Signature, result.SigningKeyID); storeErr != nil {
+			if storeErr := s.store.UpdateArtifactSignature(ctx, a.ID, result.Signature, result.SigningKeyID, result.TauriSignature); storeErr != nil {
 				if errors.Is(storeErr, store.ErrReleaseNotPublishable) {
 					// Another publish won while we were signing.
 					return nil, apperr.New(409, "NOT_PUBLISHABLE", "release must be a draft")

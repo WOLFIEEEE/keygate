@@ -93,6 +93,50 @@ func TestRenderSparkleHappyPath(t *testing.T) {
 	}
 }
 
+// The product's minimum supported version marks the updates that reach
+// it as critical for apps below it, in the element Sparkle reads:
+// <sparkle:criticalUpdate sparkle:version="..."/>.
+func TestRenderSparkleCriticalUpdate(t *testing.T) {
+	in := FeedInput{
+		ProductName:             "MyApp",
+		MinimumSupportedVersion: "1.2.0",
+		Releases:                []*FeedRelease{mkRelease("1.3.0"), mkRelease("1.2.0"), mkRelease("1.1.5")},
+	}
+	body, err := RenderSparkle(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `<sparkle:criticalUpdate sparkle:version="1.2.0"></sparkle:criticalUpdate>`) {
+		t.Errorf("missing the criticalUpdate element:\n%s", body)
+	}
+	var feed struct {
+		Items []struct {
+			Version  string `xml:"version"`
+			Critical *struct {
+				Version string `xml:"version,attr"`
+			} `xml:"criticalUpdate"`
+		} `xml:"channel>item"`
+	}
+	if err := xml.Unmarshal(body, &feed); err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range feed.Items {
+		wantCritical := it.Version != "1.1.5" // below the floor: installing it fixes nothing
+		if (it.Critical != nil) != wantCritical {
+			t.Errorf("%s critical = %v, want %v", it.Version, it.Critical != nil, wantCritical)
+		}
+		if it.Critical != nil && it.Critical.Version != "1.2.0" {
+			t.Errorf("%s critical for apps below %q, want 1.2.0", it.Version, it.Critical.Version)
+		}
+	}
+
+	in.MinimumSupportedVersion = ""
+	body, _ = RenderSparkle(in)
+	if strings.Contains(string(body), "criticalUpdate") {
+		t.Errorf("no floor must mean no critical updates:\n%s", body)
+	}
+}
+
 func TestRenderSparkleOmitsInvalidSignature(t *testing.T) {
 	in := FeedInput{
 		ProductName: "MyApp",
@@ -133,51 +177,93 @@ func TestSanitizeCDATAEscapesEndMarker(t *testing.T) {
 	}
 }
 
+// The feed must match what Velopack's client deserializes
+// (VelopackAssetFeed): an object with Assets, PascalCase properties, an
+// plain FileName it downloads from the base URL, and SHA256 in upper case hex,
+// since the client compares its own BitConverter hash ordinally.
 func TestBuildVelopack(t *testing.T) {
-	in := FeedInput{
-		ProductName: "MyApp",
-		Releases: []*FeedRelease{
-			mkRelease("1.2.3"),
-			mkRelease("1.3.0", func(_ *model.Release, a *model.ReleaseArtifact) {
-				a.FileKey = "releases/.../app-1.3.0.nupkg"
-			}),
-		},
+	in := FeedInput{Releases: []*FeedRelease{mkRelease("1.2.3"), mkRelease("1.3.0")}}
+	in.Releases[0].Artifact.SHA256 = "ab12cd34"
+	feed := BuildVelopack(in, "MyApp")
+	body, err := json.Marshal(feed)
+	if err != nil {
+		t.Fatal(err)
 	}
-	feed := BuildVelopack(in)
-	if len(feed) != 2 {
-		t.Fatalf("expected 2 entries, got %d", len(feed))
+	var decoded struct {
+		Assets []map[string]any
 	}
-	if feed[0].ID != "v1.2.3" {
-		t.Errorf("expected v1.2.3 prefix, got %q", feed[0].ID)
+	if err := json.Unmarshal(body, &decoded); err != nil || len(decoded.Assets) != 2 {
+		t.Fatalf("feed must be {\"Assets\": [...]} with 2 entries, got %s", body)
 	}
-	if !strings.HasSuffix(feed[0].Filename, ".dmg") {
-		t.Errorf("expected .dmg extension preserved, got %q", feed[0].Filename)
+	first := decoded.Assets[0]
+	for _, k := range []string{"PackageId", "Version", "Type", "FileName", "SHA256", "Size"} {
+		if _, ok := first[k]; !ok {
+			t.Errorf("asset is missing %s: %s", k, body)
+		}
 	}
-	if !strings.HasSuffix(feed[1].Filename, ".nupkg") {
-		t.Errorf("expected .nupkg extension preserved, got %q", feed[1].Filename)
+	if first["PackageId"] != "MyApp" || first["Version"] != "1.2.3" || first["Type"] != "Full" {
+		t.Errorf("unexpected asset: %v", first)
 	}
-	if feed[0].Type != "Full" {
-		t.Errorf("expected Type=Full, got %q", feed[0].Type)
+	if first["SHA256"] != "AB12CD34" {
+		t.Errorf("SHA256 must be upper case hex, got %v", first["SHA256"])
 	}
-
-	// Marshalable to JSON.
-	if _, err := json.Marshal(feed); err != nil {
-		t.Errorf("BuildVelopack output not JSON-serialisable: %v", err)
+	// A plain file name: Velopack names its cache file after it.
+	name := first["FileName"].(string)
+	if strings.ContainsAny(name, "/?") {
+		t.Errorf("FileName must be a plain file name, got %v", name)
+	}
+	v, ch, plat, ok := ParseVelopackFileName(name)
+	if !ok || v != "1.2.3" || ch == "" || plat == "" {
+		t.Errorf("FileName %q must parse back to version, channel and platform", name)
 	}
 }
 
 func TestBuildVelopackEmpty(t *testing.T) {
-	feed := BuildVelopack(FeedInput{})
-	if len(feed) != 0 {
-		t.Errorf("expected empty slice, got %v", feed)
-	}
-	body, err := json.Marshal(feed)
+	body, err := json.Marshal(BuildVelopack(FeedInput{}, "MyApp"))
 	if err != nil {
-		t.Fatalf("marshal: %v", err)
+		t.Fatal(err)
 	}
-	// MUST be `[]` not `null` — Velopack clients can't handle null.
-	if string(body) != "[]" {
-		t.Errorf("expected []; got %s", string(body))
+	if string(body) != `{"Assets":[]}` {
+		t.Errorf("an empty feed must be {\"Assets\":[]}, got %s", body)
+	}
+}
+
+func TestVelopackFileNameRoundTrip(t *testing.T) {
+	rel := &model.Release{Version: "2.0.0-beta.1", Channel: "beta"}
+	a := &model.ReleaseArtifact{Platform: "darwin-arm64"}
+	name := VelopackFileName(rel, a)
+	if name != "2.0.0-beta.1_beta_darwin-arm64.nupkg" {
+		t.Fatalf("got %q", name)
+	}
+	v, ch, plat, ok := ParseVelopackFileName(name)
+	if !ok || v != rel.Version || ch != "beta" || plat != "darwin-arm64" {
+		t.Errorf("round trip gave %q %q %q %v", v, ch, plat, ok)
+	}
+	if _, _, _, ok := ParseVelopackFileName("releases.osx.json"); ok {
+		t.Error("a feed name must not parse as a package")
+	}
+}
+
+func TestVelopackPlatformAndChannel(t *testing.T) {
+	for rid, want := range map[string]string{
+		"win-x64": "windows-x64", "win-arm64": "windows-arm64", "osx-arm64": "darwin-arm64",
+		"osx-x64": "darwin-x64", "linux-x64": "linux-x64", "linux-arm64": "linux-arm64", "linux-arm": "linux-armhf",
+		"freebsd-x64": "",
+	} {
+		if got := VelopackPlatform(rid); got != want {
+			t.Errorf("rid %s: got %q, want %q", rid, got, want)
+		}
+	}
+	for name, want := range map[string][2]string{
+		"win": {"stable", ""}, "osx": {"stable", ""}, "linux": {"stable", ""},
+		"beta": {"beta", ""}, "stable": {"stable", ""}, "dev": {"dev", ""},
+		"win-x64": {"stable", "windows-x64"}, "win-x64-beta": {"beta", "windows-x64"},
+		"osx-arm64-alpha": {"alpha", "darwin-arm64"}, "linux-arm": {"stable", "linux-armhf"},
+		"nightly": {"stable", ""},
+	} {
+		if ch, plat := VelopackChannel(name); ch != want[0] || plat != want[1] {
+			t.Errorf("channel %s: got %q %q, want %q %q", name, ch, plat, want[0], want[1])
+		}
 	}
 }
 
@@ -201,94 +287,22 @@ func TestBuildTauri(t *testing.T) {
 	}
 }
 
+// The message travels only with the floor it explains.
+func TestBuildTauriMinimumMessage(t *testing.T) {
+	in := FeedInput{Releases: []*FeedRelease{mkRelease("1.3.0")}, MinimumSupportedVersion: "1.2.0", MinimumSupportedMessage: "Please update"}
+	if m := BuildTauri(in); m.MinimumSupportedVersion != "1.2.0" || m.MinimumSupportedMessage != "Please update" {
+		t.Errorf("floor and message: got %q %q", m.MinimumSupportedVersion, m.MinimumSupportedMessage)
+	}
+	in.MinimumSupportedVersion = ""
+	if m := BuildTauri(in); m.MinimumSupportedMessage != "" {
+		t.Errorf("a message without a floor must not be sent, got %q", m.MinimumSupportedMessage)
+	}
+}
+
 func TestBuildTauriEmpty(t *testing.T) {
 	m := BuildTauri(FeedInput{})
 	if m.Version != "" {
 		t.Errorf("expected empty manifest, got %+v", m)
-	}
-}
-
-// TestTauriSignatureEnvelopeMatchesVerifier verifies the wire shape
-// against Tauri's actual verifier behavior:
-//
-//	signature.lines().nth(1) → base64
-//	decoded[0..2]   == "Ed"
-//	decoded[2..10]  == 8-byte key_id (= pubkey[2..10] for the same key)
-//	decoded[10..74] == 64-byte ed25519 sig
-//
-// Anything else makes Tauri silently reject the update — and we'd see
-// no signal in our tests until production users complained.
-func TestTauriSignatureEnvelopeMatchesVerifier(t *testing.T) {
-	rawSig := make([]byte, 64)
-	for i := range rawSig {
-		rawSig[i] = byte(i + 100)
-	}
-	rawPub := make([]byte, 32)
-	for i := range rawPub {
-		rawPub[i] = byte(i + 1)
-	}
-	sigB64 := base64.StdEncoding.EncodeToString(rawSig)
-	pubB64 := base64.StdEncoding.EncodeToString(rawPub)
-
-	envelope := TauriSignatureEnvelope(sigB64, pubB64)
-	lines := strings.Split(envelope, "\n")
-	if len(lines) < 2 {
-		t.Fatalf("envelope must have at least 2 lines, got %d:\n%s", len(lines), envelope)
-	}
-	if !strings.HasPrefix(lines[0], "untrusted comment:") {
-		t.Errorf("line 1 must start with 'untrusted comment:', got %q", lines[0])
-	}
-	decoded, err := base64.StdEncoding.DecodeString(lines[1])
-	if err != nil {
-		t.Fatalf("line 2 must decode as base64: %v", err)
-	}
-	if len(decoded) != 2+8+64 {
-		t.Fatalf("decoded blob must be 74 bytes (algo+key_id+sig), got %d", len(decoded))
-	}
-	if string(decoded[0:2]) != "Ed" {
-		t.Errorf("algo prefix must be 'Ed', got %q", decoded[0:2])
-	}
-
-	// Pubkey envelope's key_id MUST match the sig envelope's key_id.
-	tauriPub := TauriPublicKey(pubB64)
-	pubDecoded, err := base64.StdEncoding.DecodeString(tauriPub)
-	if err != nil {
-		t.Fatalf("tauri pubkey must decode: %v", err)
-	}
-	if len(pubDecoded) != 2+8+32 {
-		t.Fatalf("pubkey blob must be 42 bytes, got %d", len(pubDecoded))
-	}
-	if string(decoded[2:10]) != string(pubDecoded[2:10]) {
-		t.Errorf("sig key_id must equal pubkey key_id; sig=%x pub=%x",
-			decoded[2:10], pubDecoded[2:10])
-	}
-	if string(decoded[10:74]) != string(rawSig) {
-		t.Errorf("decoded[10:74] must equal raw signature bytes")
-	}
-	if string(pubDecoded[10:42]) != string(rawPub) {
-		t.Errorf("decoded[10:42] of pubkey must equal raw public key bytes")
-	}
-}
-
-func TestTauriEnvelopeEmptyOnUnsigned(t *testing.T) {
-	if got := TauriSignatureEnvelope("", "anything"); got != "" {
-		t.Errorf("unsigned artifact must produce empty envelope, got %q", got)
-	}
-	if got := TauriSignatureEnvelope("anything", ""); got != "" {
-		t.Errorf("missing pubkey must produce empty envelope, got %q", got)
-	}
-}
-
-func TestTauriEnvelopeRejectsMalformedInputs(t *testing.T) {
-	// 32-byte sig (too short) → empty
-	short := base64.StdEncoding.EncodeToString(make([]byte, 32))
-	pub := base64.StdEncoding.EncodeToString(make([]byte, 32))
-	if got := TauriSignatureEnvelope(short, pub); got != "" {
-		t.Errorf("short sig must produce empty envelope, got %q", got)
-	}
-	// non-base64 → empty
-	if got := TauriSignatureEnvelope("!!!not base64!!!", pub); got != "" {
-		t.Errorf("malformed base64 must produce empty envelope, got %q", got)
 	}
 }
 

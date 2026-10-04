@@ -874,6 +874,12 @@ type ReleaseArtifact struct {
 	// Nullable when the artifact was published without signing.
 	SigningKeyID string `bun:",nullzero" json:"signing_key_id,omitempty"`
 
+	// TauriSignature is the minisign signature file Tauri's updater
+	// verifies, base64 encoded: Ed25519Sig plus a trusted comment and a
+	// global signature over both. Made with the same key as Ed25519Sig.
+	// Empty = unsigned.
+	TauriSignature string `bun:",notnull,default:''" json:"-"`
+
 	CreatedAt time.Time `bun:",nullzero,default:now()" json:"created_at"`
 	UpdatedAt time.Time `bun:",nullzero,default:now()" json:"updated_at"`
 

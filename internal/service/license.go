@@ -114,7 +114,7 @@ func (s *LicenseService) Activate(ctx context.Context, in ActivateInput) (*Activ
 	if existing, err := s.store.FindActivation(ctx, lic.ID, in.Identifier); err == nil {
 		_ = s.store.TouchActivation(ctx, existing.ID)
 		middleware.LicenseActivations.WithLabelValues(lic.ProductID, "already_activated").Inc()
-		token, err := s.signToken(lic, in.Identifier)
+		token, _, err := s.signToken(ctx, lic, in.Identifier)
 		if err != nil {
 			return nil, apperr.Internal(err)
 		}
@@ -139,7 +139,7 @@ func (s *LicenseService) Activate(ctx context.Context, in ActivateInput) (*Activ
 		if errors.Is(err, store.ErrAlreadyActivated) {
 			_ = s.store.TouchActivation(ctx, act.ID)
 			middleware.LicenseActivations.WithLabelValues(lic.ProductID, "already_activated").Inc()
-			token, terr := s.signToken(lic, in.Identifier)
+			token, _, terr := s.signToken(ctx, lic, in.Identifier)
 			if terr != nil {
 				return nil, apperr.Internal(terr)
 			}
@@ -181,7 +181,7 @@ func (s *LicenseService) Activate(ctx context.Context, in ActivateInput) (*Activ
 		})
 	}
 
-	token, err := s.signToken(lic, in.Identifier)
+	token, _, err := s.signToken(ctx, lic, in.Identifier)
 	if err != nil {
 		return nil, apperr.Internal(err)
 	}
@@ -317,7 +317,7 @@ func (s *LicenseService) Verify(ctx context.Context, in VerifyInput) (*VerifyRes
 
 	middleware.LicenseVerifications.WithLabelValues(lic.ProductID, "valid").Inc()
 
-	token, err := s.signToken(lic, in.Identifier)
+	token, features, err := s.signToken(ctx, lic, in.Identifier)
 	if err != nil {
 		return nil, apperr.Internal(err)
 	}
@@ -328,7 +328,7 @@ func (s *LicenseService) Verify(ctx context.Context, in VerifyInput) (*VerifyRes
 		PlanName:            planName,
 		ValidUntil:          lic.ValidUntil,
 		UpdatesUntil:        lic.EffectiveUpdatesUntil(),
-		Features:            s.entitlements(lic),
+		Features:            features,
 		Token:               token,
 		GraceDays:           s.effectiveGraceDays(lic),
 		Meta:                responseMeta(),
@@ -553,22 +553,6 @@ func (s *LicenseService) effectiveGraceDays(lic *model.License) int {
 	}
 }
 
-func (s *LicenseService) entitlements(lic *model.License) map[string]any {
-	m := make(map[string]any)
-	if lic.Plan == nil {
-		return m
-	}
-	for _, e := range lic.Plan.Entitlements {
-		switch e.ValueType {
-		case "bool":
-			m[e.Feature] = e.Value == "true"
-		default:
-			m[e.Feature] = e.Value
-		}
-	}
-	return m
-}
-
 func responseMeta() map[string]any {
 	return map[string]any{"server": branding.Project, "url": branding.URL}
 }
@@ -586,8 +570,16 @@ func (s *LicenseService) tokenTTLFor(lic *model.License) time.Duration {
 	return tokenTTL
 }
 
-func (s *LicenseService) signToken(lic *model.License, identifier string) (string, error) {
+// signToken also returns the feature map it signed, so a verify answer
+// reports exactly the features its token carries.
+func (s *LicenseService) signToken(ctx context.Context, lic *model.License, identifier string) (string, map[string]any, error) {
 	now := time.Now()
+
+	ents, err := licenseFeatures(ctx, s.store, lic)
+	if err != nil {
+		return "", nil, err
+	}
+	features := featureValues(ents)
 
 	// A token must never outlive the licence it was issued for. With a
 	// flat 7-day TTL, a plan whose grace period is shorter than that
@@ -621,7 +613,7 @@ func (s *LicenseService) signToken(lic *model.License, identifier string) (strin
 		PlanID:       lic.PlanID,
 		Status:       lic.Status,
 		Identifier:   identifier,
-		Features:     s.entitlements(lic),
+		Features:     features,
 		IssuedAt:     now.Unix(),
 		ExpiresAt:    expiresAt.Unix(),
 		ValidUntil:   validUntil,
@@ -629,5 +621,6 @@ func (s *LicenseService) signToken(lic *model.License, identifier string) (strin
 		GraceDays:    grace,
 		Fingerprint:  license.Fingerprint(identifier, lic.ProductID),
 	}
-	return license.Sign(t, s.signingKey)
+	token, err := license.Sign(t, s.signingKey)
+	return token, features, err
 }

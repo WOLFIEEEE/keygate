@@ -240,7 +240,7 @@ export default function LicensesPage() {
                     <DataTableSortHead sort={srt} column="created_at" firstOrder="desc">
                       {t("common.created")}
                     </DataTableSortHead>
-                    <DataTableHead className="w-16" />
+                    <DataTableHead className="w-16 text-right">{t("common.actions")}</DataTableHead>
                   </DataTableRow>
                 </DataTableHeader>
                 <DataTableBody>
@@ -281,8 +281,14 @@ export default function LicensesPage() {
                       <DataTableCell className="text-muted-foreground text-xs">
                         {formatDate(lic.created_at)}
                       </DataTableCell>
-                      <DataTableCell>
-                        <Button variant="ghost" size="icon" onClick={() => setViewing(lic.id)}>
+                      <DataTableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={t("licenses.detail")}
+                          aria-label={t("licenses.detail")}
+                          onClick={() => setViewing(lic.id)}
+                        >
                           <Eye className="h-4 w-4" />
                         </Button>
                       </DataTableCell>
@@ -376,7 +382,7 @@ function CreateLicenseDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className="h-[min(680px,85vh)]">
         <DialogHeader>
           <DialogTitle>{t("licenses.issue")}</DialogTitle>
           <DialogDescription>{t("licenses.issueDesc")}</DialogDescription>

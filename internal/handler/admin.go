@@ -599,6 +599,21 @@ func (h *AdminHandler) UpdateProduct(c *gin.Context) {
 		p.MinimumSupportedMessage = msg
 		cols = append(cols, "minimum_supported_message")
 	}
+	// The message explains the floor and means nothing without one. A
+	// message sent where no floor will be set is refused rather than
+	// dropped, so the caller learns it did not take.
+	if req.MinimumSupportedMessage != nil && strings.TrimSpace(*req.MinimumSupportedMessage) != "" && p.MinimumSupportedVersion == "" {
+		response.BadRequest(c, "minimum_supported_message needs a minimum_supported_version: set the version in the same request, or keep the one already set")
+		return
+	}
+	// Turning the floor off clears its message, so a later floor never
+	// shows a message written for an earlier one.
+	if p.MinimumSupportedVersion == "" && p.MinimumSupportedMessage != "" {
+		p.MinimumSupportedMessage = ""
+		if !slices.Contains(cols, "minimum_supported_message") {
+			cols = append(cols, "minimum_supported_message")
+		}
+	}
 	if req.RequireSigning != nil {
 		p.RequireSigning = *req.RequireSigning
 		cols = append(cols, "require_signing")
@@ -745,6 +760,10 @@ func (h *AdminHandler) UpdateProduct(c *gin.Context) {
 		response.Conflict(c, waiting.code, waiting.message, waiting.details)
 		return
 	}
+	h.Store.Audit(c, &model.AuditLog{
+		Entity: "product", EntityID: p.ID, Action: "updated",
+		ActorType: "admin", ActorID: adminID(c),
+	})
 	response.OK(c, p)
 }
 
@@ -1362,6 +1381,10 @@ func (h *AdminHandler) UpdatePlan(c *gin.Context) {
 		response.Internal(c, err)
 		return
 	}
+	h.Store.Audit(c, &model.AuditLog{
+		Entity: "plan", EntityID: p.ID, Action: "updated",
+		ActorType: "admin", ActorID: adminID(c),
+	})
 	response.OK(c, p)
 }
 
@@ -1457,6 +1480,10 @@ func (h *AdminHandler) DeletePlan(c *gin.Context) {
 		response.Internal(c, err)
 		return
 	}
+	h.Store.Audit(c, &model.AuditLog{
+		Entity: "plan", EntityID: id, Action: "deleted",
+		ActorType: "admin", ActorID: adminID(c),
+	})
 	response.NoContent(c)
 }
 
@@ -1514,6 +1541,11 @@ func (h *AdminHandler) CreateEntitlement(c *gin.Context) {
 		response.Err(c, http.StatusConflict, "DUPLICATE", "entitlement already exists for this plan and feature")
 		return
 	}
+	h.Store.Audit(c, &model.AuditLog{
+		Entity: "entitlement", EntityID: e.ID, Action: "created",
+		ActorType: "admin", ActorID: adminID(c),
+		Changes: map[string]any{"plan_id": e.PlanID, "feature": e.Feature, "value": e.Value},
+	})
 	response.Created(c, e)
 }
 
@@ -1637,6 +1669,11 @@ func (h *AdminHandler) UpdateEntitlement(c *gin.Context) {
 		response.Internal(c, err)
 		return
 	}
+	h.Store.Audit(c, &model.AuditLog{
+		Entity: "entitlement", EntityID: e.ID, Action: "updated",
+		ActorType: "admin", ActorID: adminID(c),
+		Changes: map[string]any{"feature": e.Feature, "value": e.Value},
+	})
 	response.OK(c, e)
 }
 
@@ -1645,6 +1682,10 @@ func (h *AdminHandler) DeleteEntitlement(c *gin.Context) {
 		response.Internal(c, err)
 		return
 	}
+	h.Store.Audit(c, &model.AuditLog{
+		Entity: "entitlement", EntityID: c.Param("id"), Action: "deleted",
+		ActorType: "admin", ActorID: adminID(c),
+	})
 	response.NoContent(c)
 }
 
@@ -2710,9 +2751,24 @@ func (h *AdminHandler) DeleteActivation(c *gin.Context) {
 	if !requireKeyProductScope(c, pid) {
 		return
 	}
+	act, err := h.Store.FindActivationByID(c, id)
+	if err != nil {
+		response.NotFound(c, "activation not found")
+		return
+	}
 	if err := h.Store.DeleteActivationByID(c, id); err != nil {
 		response.Internal(c, err)
 		return
+	}
+	h.Store.Audit(c, &model.AuditLog{
+		Entity: "activation", EntityID: id, Action: "deleted",
+		ActorType: "admin", ActorID: adminID(c),
+		Changes: map[string]any{"license_id": act.LicenseID, "identifier": act.Identifier},
+	})
+	if h.Webhook != nil {
+		h.Webhook.Dispatch(c, pid, "license.deactivated", map[string]any{
+			"license_id": act.LicenseID, "identifier": act.Identifier,
+		})
 	}
 	response.NoContent(c)
 }
@@ -3110,6 +3166,10 @@ func (h *AdminHandler) CreateAddon(c *gin.Context) {
 		response.Err(c, 409, "DUPLICATE", "addon slug already exists for this product")
 		return
 	}
+	h.Store.Audit(c, &model.AuditLog{
+		Entity: "addon", EntityID: a.ID, Action: "created",
+		ActorType: "admin", ActorID: adminID(c),
+	})
 	response.Created(c, a)
 }
 
@@ -3209,6 +3269,10 @@ func (h *AdminHandler) UpdateAddon(c *gin.Context) {
 		response.Internal(c, err)
 		return
 	}
+	h.Store.Audit(c, &model.AuditLog{
+		Entity: "addon", EntityID: a.ID, Action: "updated",
+		ActorType: "admin", ActorID: adminID(c),
+	})
 	response.OK(c, a)
 }
 
@@ -3217,6 +3281,10 @@ func (h *AdminHandler) DeleteAddon(c *gin.Context) {
 		response.Internal(c, err)
 		return
 	}
+	h.Store.Audit(c, &model.AuditLog{
+		Entity: "addon", EntityID: c.Param("id"), Action: "deleted",
+		ActorType: "admin", ActorID: adminID(c),
+	})
 	response.NoContent(c)
 }
 
@@ -3237,6 +3305,11 @@ func (h *AdminHandler) AddLicenseAddon(c *gin.Context) {
 		response.Internal(c, err)
 		return
 	}
+	h.Store.Audit(c, &model.AuditLog{
+		Entity: "license", EntityID: id, Action: "addon_added",
+		ActorType: "admin", ActorID: adminID(c),
+		Changes: map[string]any{"addon_id": req.AddonID},
+	})
 	response.Created(c, la)
 }
 
@@ -3249,6 +3322,11 @@ func (h *AdminHandler) RemoveLicenseAddon(c *gin.Context) {
 		response.Internal(c, err)
 		return
 	}
+	h.Store.Audit(c, &model.AuditLog{
+		Entity: "license", EntityID: id, Action: "addon_removed",
+		ActorType: "admin", ActorID: adminID(c),
+		Changes: map[string]any{"addon_id": c.Param("addon_id")},
+	})
 	response.NoContent(c)
 }
 

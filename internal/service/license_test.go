@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"crypto/ed25519"
 	"testing"
 	"time"
@@ -159,8 +160,6 @@ func TestGraceDays(t *testing.T) {
 }
 
 func TestEntitlements(t *testing.T) {
-	svc := &LicenseService{}
-
 	lic := &model.License{
 		Plan: &model.Plan{
 			Entitlements: []*model.Entitlement{
@@ -172,7 +171,11 @@ func TestEntitlements(t *testing.T) {
 		},
 	}
 
-	features := svc.entitlements(lic)
+	ents, err := licenseFeatures(context.Background(), nil, lic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	features := featureValues(ents)
 
 	if features["export"] != true {
 		t.Error("export should be true")
@@ -187,8 +190,8 @@ func TestEntitlements(t *testing.T) {
 		t.Errorf("sla should be '99.9%%', got %v", features["sla"])
 	}
 
-	nilLic := &model.License{}
-	emptyFeatures := svc.entitlements(nilLic)
+	nilEnts, _ := licenseFeatures(context.Background(), nil, &model.License{})
+	emptyFeatures := featureValues(nilEnts)
 	if len(emptyFeatures) != 0 {
 		t.Error("nil plan should return empty features")
 	}
@@ -267,7 +270,7 @@ func TestSignTokenClampsToLicenceDeadline(t *testing.T) {
 				ValidUntil: tt.validUntil,
 				Plan:       &model.Plan{GraceDays: tt.graceDays, TokenTTLDays: tt.ttlDays},
 			}
-			raw, err := svc.signToken(lic, "device-1")
+			raw, _, err := svc.signToken(context.Background(), lic, "device-1")
 			if err != nil {
 				t.Fatalf("signToken: %v", err)
 			}

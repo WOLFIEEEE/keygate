@@ -735,6 +735,13 @@ func (s *Store) DeleteActivationByID(ctx context.Context, id string) error {
 	return err
 }
 
+// FindActivationByID loads one activation.
+func (s *Store) FindActivationByID(ctx context.Context, id string) (*model.Activation, error) {
+	a := new(model.Activation)
+	err := s.DB.NewSelect().Model(a).Where("id = ?", id).Scan(ctx)
+	return a, err
+}
+
 // GetActivationProductID resolves the product behind an activation
 // in a single query. Used by the activation delete handler to enforce
 // API-key product scoping without loading the full activation row.

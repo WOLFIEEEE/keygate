@@ -2033,6 +2033,11 @@ func (h *StripeHandler) onChargeRefunded(ctx context.Context, raw json.RawMessag
 			ActorType: "webhook",
 			Changes:   map[string]any{"reason": "full_refund", "provider": "stripe", "charge_id": data.ID},
 		})
+		if h.WebhookSvc != nil {
+			h.WebhookSvc.Dispatch(ctx, lic.ProductID, "license.revoked", map[string]any{
+				"license_id": lic.ID, "email": lic.Email,
+			})
+		}
 	} else if data.AmountRefunded > 0 {
 		h.Store.Audit(ctx, &model.AuditLog{
 			Entity: "license", EntityID: lic.ID, Action: "partial_refund",
@@ -2569,6 +2574,11 @@ func (h *StripeHandler) ChangePlan(c *gin.Context) {
 			"proration": prorationBehavior,
 		},
 	})
+	if h.WebhookSvc != nil {
+		h.WebhookSvc.Dispatch(c, lic.ProductID, "plan.changed", map[string]any{
+			"license_id": lic.ID, "old_plan_id": oldPlanID, "new_plan_id": newPlan.ID,
+		})
+	}
 
 	response.OK(c, gin.H{
 		"status":        "plan_changed",
