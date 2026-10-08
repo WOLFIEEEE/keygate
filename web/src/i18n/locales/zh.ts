@@ -517,7 +517,7 @@ const zh = {
   // Checkout
   "checkout.verifying": "正在验证您的付款...",
   "checkout.success": "付款成功！",
-  "checkout.licenseSentTo": "许可证密钥已发送至 {email}",
+  "checkout.licenseSentTo": "许可证已就绪。我们会将密钥和下载链接发送至 {email}。",
   "checkout.licenseCreated": "许可证密钥已创建",
   "checkout.error": "无法验证付款。您的许可证将稍后通过邮件发送。",
   "checkout.viewLicense": "查看我的许可证",

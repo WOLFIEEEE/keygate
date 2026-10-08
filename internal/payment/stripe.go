@@ -880,7 +880,8 @@ func (h *StripeHandler) fulfillCheckout(ctx context.Context, email, customerID, 
 	// Ensure user record exists so they appear in Customers
 	_ = h.Store.UpsertUser(ctx, &model.User{Email: email})
 
-	err = h.Store.CreateLicenseWithSubscription(ctx, lic, plan)
+	confirmation := h.checkoutConfirmation(ctx, email, lic, plan)
+	err = h.Store.CreateLicenseWithSubscriptionAndEmail(ctx, lic, plan, confirmation)
 	if errors.Is(err, store.ErrPlanChanged) {
 		// The plan was retyped between resolving it and this write.
 		// Everything about the license follows from that type, so the
@@ -955,6 +956,24 @@ func (h *StripeHandler) fulfillCheckout(ctx context.Context, email, customerID, 
 		_ = h.Store.UpdateLicenseUser(ctx, lic.ID, u.ID)
 	}
 
+	h.Store.Audit(ctx, &model.AuditLog{
+		Entity: "license", EntityID: lic.ID, Action: "created",
+		ActorType: source,
+		Changes:   map[string]any{"provider": "stripe", "email": email, "plan": plan.Name},
+	})
+
+	if h.WebhookSvc != nil {
+		h.WebhookSvc.Dispatch(ctx, lic.ProductID, "license.created", map[string]any{
+			"license_id": lic.ID, "email": lic.Email, "plan_id": lic.PlanID,
+		})
+	}
+
+	slog.Info("license created", "email", email, "plan", plan.Name, "source", source)
+	return true, nil
+}
+
+// checkoutConfirmation renders the delivery mail before the purchase transaction.
+func (h *StripeHandler) checkoutConfirmation(ctx context.Context, email string, lic *model.License, plan *model.Plan) *store.QueuedEmail {
 	// One product read for both the name and the download page.
 	productName, downloadURL := "Your Software", ""
 	if p, err := h.Store.FindProductByID(ctx, plan.ProductID); err == nil {
@@ -965,6 +984,7 @@ func (h *StripeHandler) fulfillCheckout(ctx context.Context, email, customerID, 
 	} else {
 		slog.Warn("product name not found, using fallback", "product_id", plan.ProductID)
 	}
+	var confirmation *store.QueuedEmail
 	if email != "" {
 		// Use DecryptLicenseKey for forward compatibility — Phase C will
 		// drop the plaintext column and direct .LicenseKey reads will be empty.
@@ -985,23 +1005,10 @@ func (h *StripeHandler) fulfillCheckout(ctx context.Context, email, customerID, 
 <p style="color: #666; font-size: 14px;">Keep this key safe. You'll need it to activate your software.</p>
 </body></html>`, html.EscapeString(productName), html.EscapeString(plan.Name), html.EscapeString(displayKey))
 		}
-		_ = h.Store.EnqueueEmail(ctx, email, subject, body)
+		confirmation = &store.QueuedEmail{ToAddr: email, Subject: subject, Body: body}
 	}
 
-	h.Store.Audit(ctx, &model.AuditLog{
-		Entity: "license", EntityID: lic.ID, Action: "created",
-		ActorType: source,
-		Changes:   map[string]any{"provider": "stripe", "email": email, "plan": plan.Name},
-	})
-
-	if h.WebhookSvc != nil {
-		h.WebhookSvc.Dispatch(ctx, lic.ProductID, "license.created", map[string]any{
-			"license_id": lic.ID, "email": lic.Email, "plan_id": lic.PlanID,
-		})
-	}
-
-	slog.Info("license created", "email", email, "plan", plan.Name, "source", source)
-	return true, nil
+	return confirmation
 }
 
 // VerifyCheckoutSession handles GET /api/v1/checkout/verify?session_id=xxx

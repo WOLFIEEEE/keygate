@@ -522,7 +522,7 @@ func main() {
 	provisionCancel()
 	if merchantSettings != nil {
 		stripeH.CheckoutReady = func(checkCtx context.Context) bool {
-			return len(merchant.Readiness(checkCtx, db, cfg, merchantSettings, stripeH.GetWebhookSecret(), releaseStorage)) == 0
+			return len(merchant.Readiness(checkCtx, db, cfg, merchantSettings, stripeH.GetWebhookSecret(), releaseStorage, emailSvc)) == 0
 		}
 	}
 
@@ -731,7 +731,7 @@ func main() {
 		r.Any(storage.FilesystemRoute, gin.WrapH(filesystemStorage))
 	}
 	r.GET("/ready", func(c *gin.Context) {
-		issues := merchant.Readiness(c.Request.Context(), db, cfg, merchantSettings, stripeH.GetWebhookSecret(), releaseStorage)
+		issues := merchant.Readiness(c.Request.Context(), db, cfg, merchantSettings, stripeH.GetWebhookSecret(), releaseStorage, emailSvc)
 		code := http.StatusOK
 		if len(issues) > 0 {
 			code = http.StatusServiceUnavailable

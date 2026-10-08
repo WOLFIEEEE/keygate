@@ -129,6 +129,7 @@ func TestProvisionStoreAndSignedRelease(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	signer := service.NewReleaseSigningService(service.ReleaseSigningServiceConfig{Store: st, Storage: fs, AEAD: aead, Logger: logger, MaxSignSize: 50 * 1024 * 1024})
 	cfg := &config.Config{BaseURL: "https://license.example.test", StripeSecretKey: "sk_test_fixture", SMTPHost: "mail.example.test", SMTPFrom: "store@example.test", StorageLocalPath: t.TempDir(), ReleaseKeyEncryptionKey: strings.Repeat("1", 64)}
+	mailer := service.NewEmailService(cfg.SMTPHost, "587", "", "", cfg.SMTPFrom, logger, st)
 	settings := &Settings{OwnerEmail: "owner@example.test", OwnerName: "Owner", SiteName: "Test store", ProductName: "Accessible Forms Pro", ProductSlug: "accessible-forms-pro", PublisherKey: "kg_live_" + strings.Repeat("x", 64), Plans: []Plan{{Slug: "single-site-annual", Name: "Single site", Sites: 1, Amount: 2900, Currency: "usd", Interval: "year"}, {Slug: "lifetime", Name: "Lifetime", Sites: 0, Amount: 19900, Currency: "usd", Interval: "lifetime"}}}
 	if err = Provision(ctx, st, signer, cfg, settings); err != nil {
 		t.Fatal(err)
@@ -165,7 +166,7 @@ func TestProvisionStoreAndSignedRelease(t *testing.T) {
 	if err != nil || len(key.Scopes) != 1 || key.Scopes[0] != "releases:write" {
 		t.Fatal("publisher key has wrong permissions")
 	}
-	blocked := Readiness(ctx, st, cfg, settings, "whsec_fixture", fs)
+	blocked := Readiness(ctx, st, cfg, settings, "whsec_fixture", fs, mailer)
 	if len(blocked) != 1 || blocked[0] != "published_plugin_missing" {
 		t.Fatalf("unexpected pre-publication readiness %v", blocked)
 	}
@@ -221,13 +222,56 @@ func TestProvisionStoreAndSignedRelease(t *testing.T) {
 	if _, err = releaseService.Publish(ctx, release.ID); err != nil {
 		t.Fatal(err)
 	}
-	if pending := Readiness(ctx, st, cfg, settings, "whsec_fixture", fs); len(pending) != 0 {
+	if pending := Readiness(ctx, st, cfg, settings, "whsec_fixture", fs, mailer); len(pending) != 0 {
 		t.Fatalf("completed store not ready: %v", pending)
 	}
+	t.Run("checkout follows the selected email provider", func(t *testing.T) {
+		if err := st.SetSetting(ctx, "email_provider", "smtp"); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = st.SetSetting(ctx, "email_provider", "") })
+		if pending := Readiness(ctx, st, cfg, settings, "whsec_fixture", fs, mailer); len(pending) != 1 || pending[0] != "email_configuration_missing" {
+			t.Errorf("incomplete dashboard provider must override environment SMTP: %v", pending)
+		}
+		for key, value := range map[string]string{"smtp_host": "smtp.example.test", "smtp_from": "store@example.test"} {
+			if err := st.SetSetting(ctx, key, value); err != nil {
+				t.Fatal(err)
+			}
+		}
+		withoutSMTP := *cfg
+		withoutSMTP.SMTPHost, withoutSMTP.SMTPFrom = "", ""
+		dashboardMailer := service.NewEmailService("", "587", "", "", "", logger, st)
+		if pending := Readiness(ctx, st, &withoutSMTP, settings, "whsec_fixture", fs, dashboardMailer); len(pending) != 0 {
+			t.Errorf("complete dashboard provider must work without environment SMTP: %v", pending)
+		}
+		st.LicenseKeyAEAD = aead
+		for key, value := range map[string]string{"email_provider": "cloudflare", "cloudflare_from": "store@example.test", "cloudflare_account_id": "account_fixture"} {
+			if err := st.SetSetting(ctx, key, value); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := st.SetSettings(ctx, map[string]string{"cloudflare_api_token": "fixture_token"}); err != nil {
+			t.Fatal(err)
+		}
+		if pending := Readiness(ctx, st, &withoutSMTP, settings, "whsec_fixture", fs, dashboardMailer); len(pending) != 0 {
+			t.Errorf("complete HTTP provider must work without SMTP: %v", pending)
+		}
+		st.LicenseKeyAEAD = nil
+		if pending := Readiness(ctx, st, cfg, settings, "whsec_fixture", fs, mailer); len(pending) != 1 || pending[0] != "email_configuration_missing" {
+			t.Errorf("unreadable provider credentials must keep checkout closed: %v", pending)
+		}
+		st.LicenseKeyAEAD = aead
+		if err := st.SetSettings(ctx, map[string]string{"cloudflare_api_token": ""}); err != nil {
+			t.Fatal(err)
+		}
+		if pending := Readiness(ctx, st, cfg, settings, "whsec_fixture", fs, mailer); len(pending) != 1 || pending[0] != "email_configuration_missing" {
+			t.Errorf("missing HTTP credentials must override environment SMTP: %v", pending)
+		}
+	})
 	if err := fs.Delete(ctx, artifact.FileKey); err != nil {
 		t.Fatal(err)
 	}
-	if pending := Readiness(ctx, st, cfg, settings, "whsec_fixture", fs); len(pending) != 1 || pending[0] != "plugin_file_unavailable" {
+	if pending := Readiness(ctx, st, cfg, settings, "whsec_fixture", fs, mailer); len(pending) != 1 || pending[0] != "plugin_file_unavailable" {
 		t.Fatalf("missing deliverable accepted: %v", pending)
 	}
 	other := *settings

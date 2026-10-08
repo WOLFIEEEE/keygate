@@ -531,7 +531,7 @@ const en = {
   // Checkout
   "checkout.verifying": "Verifying your payment...",
   "checkout.success": "Payment successful!",
-  "checkout.licenseSentTo": "Your license key has been sent to {email}",
+  "checkout.licenseSentTo": "Your license is ready. We’ll email your key and download link to {email}.",
   "checkout.licenseCreated": "Your license key has been created",
   "checkout.error": "Unable to verify payment. Your license will be delivered shortly via email.",
   "checkout.viewLicense": "View my license",

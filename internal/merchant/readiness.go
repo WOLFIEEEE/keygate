@@ -2,14 +2,16 @@ package merchant
 
 import (
 	"context"
+
 	"github.com/tabloy/keygate/internal/config"
+	"github.com/tabloy/keygate/internal/service"
 	"github.com/tabloy/keygate/internal/storage"
 	"github.com/tabloy/keygate/internal/store"
 )
 
 // Readiness is distinct from process health: a healthy empty database must not
 // accept payment for a product without a deliverable, signed WordPress release.
-func Readiness(ctx context.Context, st *store.Store, cfg *config.Config, settings *Settings, webhookSecret string, objects storage.Storage) []string {
+func Readiness(ctx context.Context, st *store.Store, cfg *config.Config, settings *Settings, webhookSecret string, objects storage.Storage, email *service.EmailService) []string {
 	issues := []string{}
 	if err := st.DB.PingContext(ctx); err != nil {
 		return []string{"database_unavailable"}
@@ -23,7 +25,12 @@ func Readiness(ctx context.Context, st *store.Store, cfg *config.Config, setting
 	if webhookSecret == "" {
 		issues = append(issues, "stripe_webhook_pending")
 	}
-	if cfg.SMTPHost == "" || cfg.SMTPFrom == "" {
+	emailConfigured := false
+	if email != nil {
+		configured, err := email.ConfiguredContext(ctx)
+		emailConfigured = err == nil && configured
+	}
+	if !emailConfigured {
 		issues = append(issues, "email_configuration_missing")
 	}
 	if !cfg.IsStorageEnabled() {
