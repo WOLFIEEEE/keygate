@@ -85,8 +85,8 @@ export default function CheckoutSuccessPage() {
                         </li>
                         <li>Connect the key in Accessible Forms → Pro license.</li>
                       </ol>
-                      <a href="/guide" className="text-primary underline inline-flex min-h-11 items-center">
-                        Read the installation guide
+                      <a href="/#installation" className="text-primary underline inline-flex min-h-11 items-center">
+                        Installation instructions
                       </a>
                     </div>
                   </>
@@ -99,11 +99,8 @@ export default function CheckoutSuccessPage() {
                 <Button asChild variant="outline">
                   <a href="/portal">Open your account</a>
                 </Button>
-                <a
-                  href="/products/accessible-forms-pro"
-                  className="text-primary underline min-h-11 inline-flex items-center"
-                >
-                  Back to product details
+                <a href="/" className="text-primary underline min-h-11 inline-flex items-center">
+                  Back to product and plans
                 </a>
               </div>
             )}

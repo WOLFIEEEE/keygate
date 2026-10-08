@@ -11,10 +11,7 @@ import { SiteConfigProvider } from "@/hooks/use-site-config"
 import { I18nProvider } from "@/i18n"
 import AcceptInvitePage from "@/pages/accept-invite"
 import CheckoutSuccessPage from "@/pages/checkout-success"
-import GuidePage from "@/pages/guide"
 import LoginPage from "@/pages/login"
-import PricingPage from "@/pages/pricing"
-import ProductPage from "@/pages/product"
 import SetupPage from "@/pages/setup"
 import StorePage from "@/pages/store"
 import "./index.css"
@@ -78,10 +75,11 @@ createRoot(document.getElementById("root")!).render(
                     <Route path="/login" element={<LoginPage />} />
                     <Route element={<StoreLayout />}>
                       <Route path="/" element={<StorePage />} />
-                      <Route path="/products/accessible-forms" element={<ProductPage />} />
-                      <Route path="/products/accessible-forms-pro" element={<ProductPage pro />} />
-                      <Route path="/pricing" element={<PricingPage />} />
-                      <Route path="/guide" element={<GuidePage />} />
+                      {/* Keep old plugin links and bookmarks working without separate public pages. */}
+                      <Route path="/products/accessible-forms" element={<Navigate to="/" replace />} />
+                      <Route path="/products/accessible-forms-pro" element={<Navigate to="/#comparison" replace />} />
+                      <Route path="/pricing" element={<Navigate to="/#store-plans" replace />} />
+                      <Route path="/guide" element={<Navigate to="/#installation" replace />} />
                     </Route>
                     <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
                     <Route path="/accept-invite" element={<AcceptInvitePage />} />

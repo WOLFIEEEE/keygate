@@ -1,9 +1,2 @@
 User-agent: *
-Allow: /
-Disallow: /admin
-Disallow: /portal
-Disallow: /login
-Disallow: /setup
-Disallow: /checkout
-Disallow: /pay/
-Disallow: /api/
+Disallow: /

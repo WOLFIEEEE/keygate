@@ -1,167 +1,64 @@
-import { ArrowRight, Check, ClipboardList, Keyboard, Send } from "lucide-react"
 import { Link } from "react-router-dom"
-import { FormExample } from "@/components/form-example"
-import { FreeLink, ProLink, StoreCallout, StoreFAQ, StoreMeta } from "@/components/store-layout"
+import { PurchasePlans } from "@/components/purchase-plans"
+import { FeatureComparison, FreeLink } from "@/components/store-layout"
+import { freeDownload } from "@/lib/accessible-forms"
 
 export default function StorePage() {
   return (
-    <>
-      <StoreMeta
-        title="Accessible Forms for WordPress"
-        description="Build WordPress forms with visible labels, linked validation errors and a clear submission workflow. Start free or add advanced tools with Accessible Forms Pro."
-      />
-      <section className="af-shell af-hero" aria-labelledby="store-heading">
-        <div className="af-hero-copy">
-          <p className="af-eyebrow">Accessible Forms for WordPress</p>
-          <h1 id="store-heading">
-            Good forms.
-            <br />
-            <span>For everyone.</span>
-          </h1>
-          <p className="af-lead">
-            Make every question clear, every error useful and every submission easier to manage.
-          </p>
-          <p className="af-hero-detail">
-            A form builder with accessibility safeguards built in. Start with Free, then add Pro when your forms and
-            team need more.
-          </p>
-          <div className="af-actions">
-            <FreeLink />
-            <Link className="af-text-link" to="/products/accessible-forms-pro">
-              Meet Accessible Forms Pro <ArrowRight aria-hidden="true" size={17} />
-            </Link>
-          </div>
-          <p className="af-small-note">Free is a standalone plugin. Pro works alongside it.</p>
-        </div>
-        <FormExample />
+    <div className="af-shell af-purchase">
+      <section className="af-product-overview" aria-labelledby="product-heading">
+        <p className="af-eyebrow">WordPress plugin</p>
+        <h1 id="product-heading">Accessible Forms</h1>
+        <p className="af-summary">
+          Build and publish forms with visible labels, linked validation errors and entry management. Pro adds
+          conditional questions, steps, file uploads, custom styling and team workflows.
+        </p>
       </section>
-      <div className="af-proof-strip">
-        <div className="af-shell">
-          <span>
-            <Keyboard aria-hidden="true" size={18} /> Keyboard-friendly forms
-          </span>
-          <span>
-            <ClipboardList aria-hidden="true" size={18} /> Clear validation and review
-          </span>
-          <span>
-            <Send aria-hidden="true" size={18} /> Entries managed in WordPress
-          </span>
+
+      <section className="af-free-option" aria-labelledby="free-heading">
+        <div>
+          <h2 id="free-heading">Start with Free</h2>
+          <p>Unlimited forms, 13 field types, four themes, email notifications and spam controls.</p>
+          <p className="af-requirements">
+            Version {freeDownload.version} · WordPress {freeDownload.wordpress}+ · PHP {freeDownload.php}+
+          </p>
         </div>
-      </div>
-      <section className="af-shell af-section" id="products" tabIndex={-1} aria-labelledby="products-heading">
-        <div className="af-section-heading">
-          <p className="af-eyebrow">Choose your starting point</p>
-          <h2 id="products-heading">One form builder. Room to grow.</h2>
-          <p>Both plugins use the same forms, editor and core accessibility safeguards.</p>
-        </div>
-        <div className="af-product-grid">
-          <article className="af-product-card">
-            <div className="af-product-title">
-              <img src="/accessible-forms-icon.png" alt="" width="56" height="56" />
-              <span className="af-badge">Free plugin</span>
-            </div>
-            <h3>Accessible Forms</h3>
-            <p>Build, publish and manage everyday forms with a thoughtful set of essentials.</p>
-            <ul className="af-check-list">
-              <li>
-                <Check aria-hidden="true" />
-                Unlimited forms and 13 field types
-              </li>
-              <li>
-                <Check aria-hidden="true" />
-                Four themes with contrast checks
-              </li>
-              <li>
-                <Check aria-hidden="true" />
-                Notifications, spam controls and entries
-              </li>
-              <li>
-                <Check aria-hidden="true" />
-                Block, shortcode and guided publishing
-              </li>
-            </ul>
-            <div className="af-card-actions">
-              <FreeLink />
-              <Link to="/products/accessible-forms" className="af-text-link">
-                Explore Free <ArrowRight aria-hidden="true" size={16} />
-              </Link>
-            </div>
-          </article>
-          <article className="af-product-card af-product-pro">
-            <div className="af-product-title">
-              <img src="/accessible-forms-icon.png" alt="" width="56" height="56" />
-              <span className="af-badge af-badge-blue">Pro add-on</span>
-            </div>
-            <h3>Accessible Forms Pro</h3>
-            <p>Ask smarter questions and give submissions a clear path through your team.</p>
-            <ul className="af-check-list">
-              <li>
-                <Check aria-hidden="true" />
-                Conditional logic, steps and uploads
-              </li>
-              <li>
-                <Check aria-hidden="true" />
-                Custom styling and brand presets
-              </li>
-              <li>
-                <Check aria-hidden="true" />
-                SMTP, notification rules and webhooks
-              </li>
-              <li>
-                <Check aria-hidden="true" />
-                Assignments, CSV exports and Insights
-              </li>
-            </ul>
-            <div className="af-card-actions">
-              <ProLink />
-              <Link to="/products/accessible-forms-pro" className="af-text-link">
-                Explore Pro <ArrowRight aria-hidden="true" size={16} />
-              </Link>
-            </div>
-          </article>
-        </div>
+        <FreeLink />
       </section>
-      <section className="af-feature-band">
-        <div className="af-shell af-split">
-          <div>
-            <p className="af-eyebrow">From question to follow-up</p>
-            <h2>A better experience on both sides of the form.</h2>
-            <p className="af-lead">
-              Visitors get clear questions and useful feedback. Your team gets organized submissions and tools to act on
-              them.
+
+      <PurchasePlans />
+
+      <section className="af-details" aria-label="Product and installation details">
+        <details id="comparison" tabIndex={-1}>
+          <summary>Compare Free and Pro</summary>
+          <FeatureComparison />
+        </details>
+        <details id="installation" tabIndex={-1}>
+          <summary>Installation and license details</summary>
+          <div className="af-installation">
+            <ol>
+              <li>
+                Download Free above. In WordPress, go to Plugins → Add New Plugin → Upload Plugin, upload the ZIP and
+                activate it.
+              </li>
+              <li>
+                After purchasing Pro, open <Link to="/portal">My account</Link> to download the Pro ZIP and copy your
+                license key. Upload and activate Pro alongside Free.
+              </li>
+              <li>
+                In Accessible Forms → Pro license, connect your key. Eligible updates appear in WordPress’s usual
+                Plugins and Updates screens.
+              </li>
+            </ol>
+            <p>Pro requires the Free plugin, WordPress 6.5+ and PHP 8.1+.</p>
+            <p>
+              Installed Pro features keep working when a paid period ends. An active license provides eligible updates
+              and support. Manage downloads, site activations, invoices and subscriptions in your account. To move a
+              license, remove the old site’s activation before connecting the new site.
             </p>
-            <Link to="/products/accessible-forms#features" className="af-text-link">
-              See the full feature comparison <ArrowRight aria-hidden="true" size={17} />
-            </Link>
           </div>
-          <div className="af-editorial-list">
-            <article>
-              <h3>Before publishing</h3>
-              <p>Build a draft, preview the theme, test notifications and place the reviewed form.</p>
-            </article>
-            <article>
-              <h3>While answering</h3>
-              <p>Keep labels visible, connect errors to their fields and show a clear next step.</p>
-            </article>
-            <article>
-              <h3>After submitting</h3>
-              <p>Search and review entries. With Pro, assign a teammate, add notes and track follow-up dates.</p>
-            </article>
-          </div>
-        </div>
+        </details>
       </section>
-      <section className="af-shell af-section af-faq-section" aria-labelledby="store-faq-heading">
-        <div className="af-section-heading">
-          <p className="af-eyebrow">Before you choose</p>
-          <h2 id="store-faq-heading">A few useful answers.</h2>
-          <p>Learn how the two plugins work together and what your license includes.</p>
-          <Link to="/guide" className="af-text-link">
-            Read the getting-started guide <ArrowRight aria-hidden="true" size={16} />
-          </Link>
-        </div>
-        <StoreFAQ compact />
-      </section>
-      <StoreCallout />
-    </>
+    </div>
   )
 }

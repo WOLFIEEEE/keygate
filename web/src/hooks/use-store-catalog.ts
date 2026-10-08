@@ -11,16 +11,6 @@ export interface PublicPlan {
   currency: string | null
 }
 
-export interface WordPressRelease {
-  version: string
-  release_notes: string
-  wordpress_metadata?: {
-    requires: string
-    requires_php: string
-    minimum_api: number
-  }
-}
-
 export function usePublicPlans() {
   return useQuery({
     queryKey: ["public-wordpress-plans"],
@@ -45,21 +35,6 @@ export function useStoreReady() {
       })
       const body = await response.json()
       return response.ok && body.ready === true
-    },
-  })
-}
-
-export function useWordPressRelease() {
-  return useQuery({
-    queryKey: ["public-wordpress-release"],
-    queryFn: async ({ signal }) => {
-      const response = await fetch("/api/v1/wordpress/accessible-forms-pro/info", {
-        signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]),
-      })
-      const body = await response.json()
-      if (!response.ok || body.success !== true || typeof body.data?.version !== "string")
-        throw new Error("Release information unavailable")
-      return body.data as WordPressRelease
     },
   })
 }

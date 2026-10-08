@@ -73,7 +73,7 @@ export default function PortalLicensesPage() {
             <p className="text-lg font-medium">{t("portal.noLicenses")}</p>
             <p className="text-muted-foreground mt-1">{t("portal.noLicensesDesc")}</p>
             <Button asChild className="mt-5">
-              <Link to="/">Browse products</Link>
+              <Link to="/">View product and plans</Link>
             </Button>
           </CardContent>
         </Card>
@@ -213,14 +213,11 @@ function LicenseCard({ license: lic, renewalsEnabled }: { license: PortalLicense
               <a href={freeDownload.url} download className="underline text-primary min-h-11 inline-flex items-center">
                 Download the Free plugin
               </a>
-              <Link to="/guide" className="underline text-primary min-h-11 inline-flex items-center">
-                Installation and help
+              <Link to="/#installation" className="underline text-primary min-h-11 inline-flex items-center">
+                Installation instructions
               </Link>
-              <Link
-                to="/products/accessible-forms-pro"
-                className="underline text-primary min-h-11 inline-flex items-center"
-              >
-                View product details
+              <Link to="/" className="underline text-primary min-h-11 inline-flex items-center">
+                Product and plans
               </Link>
             </div>
             {downloadError && (

@@ -1342,7 +1342,7 @@ func main() {
 
 	}
 
-	serveFrontend(r, cfg.BaseURL)
+	serveFrontend(r)
 
 	// Anything that reaches the router without matching a route. Gin's
 	// built-in answer is the string "404 page not found" as
@@ -1457,11 +1457,7 @@ func newLogger(w io.Writer) *slog.Logger {
 }
 
 // serveFrontend serves the React SPA from web/dist if it exists.
-func serveFrontend(r *gin.Engine, baseURLs ...string) {
-	baseURL := "https://license.accessible.org"
-	if len(baseURLs) > 0 {
-		baseURL = strings.TrimRight(baseURLs[0], "/")
-	}
+func serveFrontend(r *gin.Engine) {
 	distPath := "web/dist"
 	if _, err := os.Stat(distPath); os.IsNotExist(err) {
 		return
@@ -1480,6 +1476,24 @@ func serveFrontend(r *gin.Engine, baseURLs ...string) {
 		if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/pay/") || path == "/health" || path == "/ready" || path == "/metrics" || path == "/docs" || strings.HasPrefix(path, "/docs/") {
 			c.Next()
 			return
+		}
+
+		c.Header("X-Robots-Tag", "noindex, nofollow")
+		// Old plugin links and bookmarks return to the single purchase page.
+		// These aliases do not serve separate product, pricing or guide pages.
+		if c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead {
+			legacy := map[string]string{
+				"/pricing":                       "/#store-plans",
+				"/guide":                         "/#installation",
+				"/products/accessible-forms":     "/",
+				"/products/accessible-forms-pro": "/#comparison",
+			}
+			if target, ok := legacy[strings.TrimRight(path, "/")]; ok {
+				c.Header("Cache-Control", "no-cache")
+				c.Redirect(http.StatusFound, target)
+				c.Abort()
+				return
+			}
 		}
 
 		// Try to serve a static file using path.Clean to prevent traversal.
@@ -1527,7 +1541,7 @@ func serveFrontend(r *gin.Engine, baseURLs ...string) {
 		// cache across a deploy; what it points at may be cached
 		// forever.
 		c.Header("Cache-Control", "no-cache")
-		c.Data(http.StatusOK, "text/html; charset=utf-8", storefrontHTML(html, path, baseURL))
+		c.Data(http.StatusOK, "text/html; charset=utf-8", html)
 		c.Abort()
 	})
 }

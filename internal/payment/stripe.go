@@ -142,7 +142,7 @@ func (h *StripeHandler) CreateCheckoutSession(c *gin.Context) {
 	if req.SuccessURL != "" && h.isSameOrigin(req.SuccessURL) {
 		success = req.SuccessURL
 	}
-	cancel := h.BaseURL + "/pricing"
+	cancel := h.BaseURL + "/#store-plans"
 	if req.CancelURL != "" && h.isSameOrigin(req.CancelURL) {
 		cancel = req.CancelURL
 	}
@@ -231,7 +231,7 @@ func (h *StripeHandler) CheckoutByPlan(c *gin.Context) {
 			{Price: stripe.String(plan.StripePriceID), Quantity: stripe.Int64(1)},
 		},
 		SuccessURL:          stripe.String(h.BaseURL + "/checkout/success?session_id={CHECKOUT_SESSION_ID}"),
-		CancelURL:           stripe.String(h.BaseURL + "/pricing"),
+		CancelURL:           stripe.String(h.BaseURL + "/#store-plans"),
 		AllowPromotionCodes: stripe.Bool(true),
 	}
 	h.applyAutomaticTax(params)

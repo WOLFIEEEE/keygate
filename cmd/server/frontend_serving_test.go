@@ -67,6 +67,26 @@ func TestServeFrontend(t *testing.T) {
 	if cc := w.Header().Get("Cache-Control"); cc != "no-cache" {
 		t.Fatalf("the shell must be revalidated, got %q", cc)
 	}
+	if got := w.Header().Get("X-Robots-Tag"); got != "noindex, nofollow" {
+		t.Fatalf("purchase/account pages should stay out of search results, got %q", got)
+	}
+	// Previously shared product links and the plugin's View plans URL
+	// return to the appropriate part of the only public purchase page.
+	for path, target := range map[string]string{
+		"/pricing":                       "/#store-plans",
+		"/pricing/":                      "/#store-plans",
+		"/guide":                         "/#installation",
+		"/products/accessible-forms":     "/",
+		"/products/accessible-forms-pro": "/#comparison",
+	} {
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(method, path, nil))
+			if w.Code != http.StatusFound || w.Header().Get("Location") != target {
+				t.Fatalf("legacy link %s %s: status=%d location=%q", method, path, w.Code, w.Header().Get("Location"))
+			}
+		}
+	}
 	// A route that happens to end in something dot-like is still a
 	// route, not a file.
 	if w := get("/licenses/1.0"); w.Code != http.StatusOK || w.Header().Get("Content-Type") != "text/html; charset=utf-8" {
@@ -88,6 +108,8 @@ func TestServeFrontend(t *testing.T) {
 	// API routes are never touched by the fallback.
 	if w := get("/api/v1/health"); w.Code != http.StatusOK || w.Body.String() != "api" {
 		t.Fatalf("api passthrough: %d %q", w.Code, w.Body.String())
+	} else if w.Header().Get("X-Robots-Tag") != "" {
+		t.Fatal("frontend indexing headers reached the API")
 	}
 	// A rebuild lands while the server runs: the next page load has
 	// to name the new asset, not the deleted one.
