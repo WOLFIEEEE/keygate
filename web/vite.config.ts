@@ -15,6 +15,7 @@ export default defineConfig({
       '/api': 'http://localhost:9000',
       '/pay': 'http://localhost:9000',
       '/health': 'http://localhost:9000',
+      '/ready': 'http://localhost:9000',
     },
   },
 })

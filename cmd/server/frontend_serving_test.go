@@ -30,6 +30,10 @@ func TestServeFrontend(t *testing.T) {
 	}
 	write("index.html", `<script src="/assets/app-v1.js"></script>`)
 	write("assets/app-v1.js", "console.log(1)")
+	if err := os.MkdirAll(filepath.Join(dist, "downloads"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write("downloads/free-1.0.0.zip", "PK-test-installer")
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -74,6 +78,12 @@ func TestServeFrontend(t *testing.T) {
 	}
 	if w := get("/favicon.ico"); w.Code != http.StatusNotFound {
 		t.Fatalf("missing file: %d, want 404", w.Code)
+	}
+	if w := get("/downloads/free-1.0.0.zip"); w.Code != http.StatusOK || w.Body.String() != "PK-test-installer" || w.Header().Get("Content-Disposition") != `attachment; filename="free-1.0.0.zip"` {
+		t.Fatal("Free installer was not served as a download")
+	}
+	if w := get("/downloads/missing.zip"); w.Code != http.StatusNotFound {
+		t.Fatal("missing installer received the SPA shell")
 	}
 	// API routes are never touched by the fallback.
 	if w := get("/api/v1/health"); w.Code != http.StatusOK || w.Body.String() != "api" {

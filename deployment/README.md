@@ -37,14 +37,22 @@ The command validates configuration and checks SMTP connectivity without sending
 
 Once started:
 
+- Product storefront: `https://license.accessible.org/`
+- Free product: `/products/accessible-forms`; Pro product: `/products/accessible-forms-pro`.
 - Store and checkout: `https://license.accessible.org/pricing`
 - Customer licenses, installer downloads and billing: `https://license.accessible.org/portal`. The first download does not use a site activation slot; connect the key after installation.
 - Admin: sign in with the configured owner email at `https://license.accessible.org/login`, then use the admin navigation.
 - Configuration readiness: `https://license.accessible.org/ready`; process health: `/health`.
 
+The storefront includes the verified Free 1.0.0 installer, Free/Pro feature comparison, an interactive browser-only form example, requirements, live Pro release notes, licensing answers and a getting-started guide at `/guide`. The customer portal links to the Free installer, guide and product details beside the protected Pro download. Product copy is grounded in the plugin source; prices and site limits come from the configured public plan catalogue. Purchasing remains closed until readiness succeeds, while the Free download stays available.
+
+Public pages provide product-specific metadata to search crawlers and link previews. Keygate attribution remains on every store page and in the API. Administration and account pages load on demand, so store visitors do not download the analytics charts.
+
 Checkout stays closed while prices, Stripe, email, the webhook or a signed deliverable are missing. A configured email provider still needs a real delivery check; SMTP authentication alone does not establish inbox delivery. Test checkout, purchase email, activation, renewal and refunds with your intended Stripe account before opening the paid store. Live billing was not exercised during local development.
 
 ## Subsequent releases and configuration changes
+
+When releasing a new Free plugin, replace the versioned ZIP and its adjacent source manifest in `web/public/downloads/`, update `web/src/lib/accessible-forms.ts` with its version, checksum and requirements, and rebuild the server. Keep the feature descriptions there and the product guide consistent with released capabilities. The public Free ZIP is independent of the licensed Pro artifact and must never contain private configuration or publishing keys. Update `web/e2e/storefront.mjs`'s installer checksum/version when replacing this reviewed package.
 
 Build a new Pro ZIP with its version header, runtime constant, stable tag, translation metadata and changelog updated together. Use a new version for changed bytes; published artifacts are immutable. Copy it into `deployment/artifacts/`, then:
 

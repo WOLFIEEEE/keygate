@@ -1,21 +1,11 @@
-import { useQuery } from "@tanstack/react-query"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { useSiteConfig } from "@/hooks/use-site-config"
+import { Check } from "lucide-react"
+import { useState } from "react"
+import { Link } from "react-router-dom"
+import { FeatureComparison, FreeLink, StoreFAQ, StoreMeta } from "@/components/store-layout"
+import { type PublicPlan, usePublicPlans, useStoreReady } from "@/hooks/use-store-catalog"
 
-interface PublicPlan {
-  id: string
-  name: string
-  license_type: string
-  billing_interval: string
-  max_sites: number
-  checkout_id: string
-  price: number | null
-  currency: string | null
-}
-
-// Stripe charge amounts are two-decimal except its supported zero-decimal
-// currencies. ISK/UGX retain the two-decimal API representation.
+// Stripe uses two decimal API amounts except for these zero-decimal currencies.
+// ISK and UGX retain the two-decimal API representation.
 const zeroDecimal = new Set([
   "bif",
   "clp",
@@ -33,142 +23,230 @@ const zeroDecimal = new Set([
   "xof",
   "xpf",
 ])
+
 export function priceLabel(plan: PublicPlan) {
   if (plan.price === null || !plan.currency) return "Price available at checkout"
-  const digits = zeroDecimal.has(plan.currency) ? 0 : 2
+  const currency = plan.currency.toLowerCase()
+  const digits = zeroDecimal.has(currency) ? 0 : 2
   return new Intl.NumberFormat(undefined, {
     style: "currency",
-    currency: plan.currency.toUpperCase(),
+    currency: currency.toUpperCase(),
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   }).format(plan.price / 10 ** digits)
 }
 
+type Period = "all" | "year" | "month" | "one-time"
+const periodOptions: { value: Period; label: string }[] = [
+  { value: "all", label: "All plans" },
+  { value: "year", label: "Annual" },
+  { value: "month", label: "Monthly" },
+  { value: "one-time", label: "One-time" },
+]
+function periodFor(plan: PublicPlan) {
+  return plan.billing_interval === "year" || plan.billing_interval === "month" ? plan.billing_interval : "one-time"
+}
+
 export default function PricingPage() {
-  const { site_name, attribution_text, attribution_url } = useSiteConfig()
-  const catalog = useQuery({
-    queryKey: ["public-wordpress-plans"],
-    queryFn: async () => {
-      const response = await fetch("/api/v1/products/accessible-forms-pro/plans", {
-        signal: AbortSignal.timeout(15000),
-      })
-      const body = await response.json()
-      if (!response.ok || body.success !== true || !Array.isArray(body.data?.plans))
-        throw new Error("Plans unavailable")
-      return body.data.plans as PublicPlan[]
-    },
-  })
-  const availability = useQuery({
-    queryKey: ["store-ready"],
-    queryFn: async () => {
-      const response = await fetch("/ready", { signal: AbortSignal.timeout(10000) })
-      const body = await response.json()
-      return response.ok && body.ready === true
-    },
-  })
+  const catalog = usePublicPlans()
+  const availability = useStoreReady()
+  const [period, setPeriod] = useState<Period>("all")
   const ready = availability.data === true
+  const plans = catalog.data || []
+  const periods = new Set(plans.map(periodFor))
+  const visiblePlans = period === "all" ? plans : plans.filter((plan) => periodFor(plan) === period)
   return (
-    <div className="min-h-screen bg-muted/30 flex flex-col">
-      <a
-        href="#store-plans"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 bg-background p-3 rounded-md"
-      >
-        Skip to plans
-      </a>
-      <header className="border-b bg-background">
-        <nav
-          aria-label="Store navigation"
-          className="max-w-5xl mx-auto px-5 py-5 flex items-center justify-between gap-3 flex-wrap"
-        >
-          <a href="/pricing" className="font-semibold text-lg">
-            {site_name}
-          </a>
-          <Button variant="outline" asChild>
-            <a href="/portal">Manage your account</a>
-          </Button>
-        </nav>
-      </header>
-      <main id="store-plans" className="w-full max-w-5xl mx-auto px-5 py-12 space-y-8 flex-1">
-        <div className="space-y-3 max-w-2xl">
-          <h1 className="text-3xl font-bold tracking-tight">Accessible Forms Pro</h1>
-          <p className="text-muted-foreground text-lg">
-            Add conditional logic, multi-step forms, uploads and entry workflows to Accessible Forms. Choose a license
-            for the sites you manage.
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Your license provides updates and support. Installed Pro features keep working when a paid period ends.
-          </p>
-        </div>
-        {catalog.isPending ? (
-          <p role="status">Loading plans…</p>
-        ) : catalog.isError ? (
-          <div role="alert" className="space-y-3">
-            <p>Plans could not be loaded. Please try again shortly.</p>
-            <Button variant="outline" onClick={() => catalog.refetch()}>
-              Try again
-            </Button>
-          </div>
-        ) : (
-          <>
-            {!ready && (
-              <p role="status" className="rounded-lg border bg-background p-4">
-                Purchasing is currently unavailable. Existing customers can still manage their licenses from their
-                account.
-              </p>
-            )}
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {catalog.data?.map((plan) => (
-                <Card key={plan.id}>
-                  <CardHeader>
-                    <CardTitle className="text-xl">{plan.name}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <p className="text-2xl font-semibold">
-                      {priceLabel(plan)}
-                      <span className="text-sm font-normal text-muted-foreground">
-                        {plan.billing_interval === "year"
-                          ? " / year"
-                          : plan.billing_interval === "month"
-                            ? " / month"
-                            : " one-time"}
-                      </span>
-                    </p>
-                    <p>
-                      {plan.max_sites === 0
-                        ? "Unlimited sites"
-                        : `${plan.max_sites} ${plan.max_sites === 1 ? "site" : "sites"}`}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {plan.license_type === "perpetual"
-                        ? "Updates for life"
-                        : "Updates for your paid period. Renews automatically; cancel from your account."}
-                    </p>
-                    {ready && plan.checkout_id && plan.price !== null ? (
-                      <Button asChild className="w-full">
-                        <a href={`/pay/${encodeURIComponent(plan.checkout_id)}`}>Choose {plan.name}</a>
-                      </Button>
-                    ) : (
-                      <Button disabled className="w-full">
-                        Purchasing unavailable
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-            {catalog.data?.length === 0 && <p>Plans will appear here when purchasing opens.</p>}
-          </>
-        )}
-        <p className="text-sm text-muted-foreground">
-          Requires the Free Accessible Forms plugin, WordPress 6.5 or later and PHP 8.1 or later. Stripe confirms the
-          final price and any applicable tax before payment.
+    <>
+      <StoreMeta
+        title="Accessible Forms Pro plans and pricing"
+        description="Compare Accessible Forms Free and Pro. Choose a Pro license by site allowance and billing period, with the same advanced features in every plan."
+      />
+      <section className="af-shell af-page-intro">
+        <p className="af-eyebrow">Plans and pricing</p>
+        <h1>The right plan for your sites.</h1>
+        <p className="af-lead">
+          Start with Free. Every Pro plan includes the same advanced features—choose the site allowance and billing
+          period that fit your work.
         </p>
-      </main>
-      <footer className="border-t px-5 py-6 text-center text-sm text-muted-foreground">
-        <a className="underline" href={attribution_url} target="_blank" rel="noreferrer">
-          {attribution_text}
-        </a>
-      </footer>
-    </div>
+        <p className="af-intro-note">
+          Installed Pro features keep working when a paid period ends. Your active license provides eligible updates and
+          support.
+        </p>
+      </section>
+      <section className="af-shell af-pricing-section" id="store-plans" tabIndex={-1} aria-labelledby="plans-heading">
+        <h2 id="plans-heading" className="af-sr-only">
+          Accessible Forms plans
+        </h2>
+        {periods.size > 1 && (
+          <fieldset className="af-period-control">
+            <legend className="af-sr-only">Filter plans by billing period</legend>
+            {periodOptions
+              .filter((option) => option.value === "all" || periods.has(option.value))
+              .map((option) => (
+                <button
+                  type="button"
+                  key={option.value}
+                  aria-pressed={period === option.value}
+                  onClick={() => setPeriod(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+          </fieldset>
+        )}
+        {!ready && !availability.isPending && (
+          <div className="af-store-notice" role="status">
+            <p>
+              <strong>Pro purchasing is currently unavailable.</strong> You can download Free now. Existing customers
+              can still manage licenses from their account.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                availability.refetch()
+                catalog.refetch()
+              }}
+            >
+              Check availability
+            </button>
+          </div>
+        )}
+        {catalog.isError && (
+          <div className="af-store-notice af-store-error" role="alert">
+            <p>Pro plans could not be loaded. Free and the product guide are still available.</p>
+            <button type="button" onClick={() => catalog.refetch()}>
+              Try again
+            </button>
+          </div>
+        )}
+        <div className="af-plan-grid">
+          <article className="af-plan-card af-free-plan">
+            <span className="af-badge">The complete foundation</span>
+            <h3>Accessible Forms</h3>
+            <p className="af-plan-price">Free</p>
+            <p className="af-plan-sites">Use on any number of sites</p>
+            <p className="af-plan-description">
+              Build and publish everyday forms. No paid plan or license key required.
+            </p>
+            <ul className="af-check-list">
+              <li>
+                <Check aria-hidden="true" />
+                Unlimited forms and 13 field types
+              </li>
+              <li>
+                <Check aria-hidden="true" />
+                Four contrast-checked themes
+              </li>
+              <li>
+                <Check aria-hidden="true" />
+                Notifications and entry management
+              </li>
+              <li>
+                <Check aria-hidden="true" />
+                Spam controls, retention and privacy tools
+              </li>
+            </ul>
+            <FreeLink />
+            <Link to="/products/accessible-forms" className="af-plan-detail">
+              Explore Free
+            </Link>
+          </article>
+          {catalog.isPending && (
+            <div className="af-plan-loading" role="status">
+              Loading Pro plans…
+            </div>
+          )}
+          {!catalog.isPending &&
+            !catalog.isError &&
+            visiblePlans.map((plan) => (
+              <article className="af-plan-card af-paid-plan" key={plan.id}>
+                <span className="af-badge af-badge-blue">Accessible Forms Pro</span>
+                <h3>{plan.name}</h3>
+                <p className="af-plan-price">
+                  {priceLabel(plan)}
+                  <span>
+                    {plan.billing_interval === "year"
+                      ? "/ year"
+                      : plan.billing_interval === "month"
+                        ? "/ month"
+                        : "one-time"}
+                  </span>
+                </p>
+                <p className="af-plan-sites">
+                  {plan.max_sites === 0
+                    ? "Unlimited sites"
+                    : `${plan.max_sites} ${plan.max_sites === 1 ? "site" : "sites"}`}
+                </p>
+                <p className="af-plan-description">
+                  {plan.license_type === "perpetual"
+                    ? "One-time purchase. Updates for life."
+                    : "Updates for your paid period. Renews automatically; cancel from your account."}
+                </p>
+                <ul className="af-check-list">
+                  <li>
+                    <Check aria-hidden="true" />
+                    Every Free feature, plus all Pro tools
+                  </li>
+                  <li>
+                    <Check aria-hidden="true" />
+                    Conditional questions, steps and uploads
+                  </li>
+                  <li>
+                    <Check aria-hidden="true" />
+                    Custom styling and delivery rules
+                  </li>
+                  <li>
+                    <Check aria-hidden="true" />
+                    Team workflows, exports and Insights
+                  </li>
+                </ul>
+                {ready && plan.checkout_id && plan.price !== null && plan.currency ? (
+                  <a className="af-button" href={`/pay/${encodeURIComponent(plan.checkout_id)}`}>
+                    Choose {plan.name}
+                  </a>
+                ) : (
+                  <button className="af-button" type="button" disabled>
+                    {availability.isPending ? "Checking availability…" : "Purchasing unavailable"}
+                  </button>
+                )}
+                <Link to="/products/accessible-forms-pro" className="af-plan-detail">
+                  Explore every Pro feature
+                </Link>
+              </article>
+            ))}
+        </div>
+        {!catalog.isPending && !catalog.isError && plans.length === 0 && (
+          <p className="af-empty-plans">
+            Pro plans will appear here when purchasing opens. Explore the features or get started with Free.
+          </p>
+        )}
+        <p className="af-pricing-footnote">
+          Pro requires Free, WordPress 6.5+ and PHP 8.1+. Stripe confirms the final price and any applicable tax before
+          payment. Manage downloads, site activations, invoices and subscriptions in{" "}
+          <Link to="/portal">My account</Link>.
+        </p>
+      </section>
+      <section className="af-feature-band" aria-labelledby="pricing-features-heading">
+        <div className="af-shell af-section">
+          <div className="af-section-heading">
+            <p className="af-eyebrow">What’s included</p>
+            <h2 id="pricing-features-heading">Compare Free and Pro.</h2>
+            <p>Use the same forms and editor. Add the tools your workflow needs.</p>
+          </div>
+          <FeatureComparison />
+        </div>
+      </section>
+      <section className="af-shell af-section af-faq-section" aria-labelledby="pricing-faq-heading">
+        <div className="af-section-heading">
+          <p className="af-eyebrow">Before checkout</p>
+          <h2 id="pricing-faq-heading">Understand your license.</h2>
+          <p>Site allowances, renewals, updates and installation, explained.</p>
+          <Link to="/guide" className="af-text-link">
+            Installation and help
+          </Link>
+        </div>
+        <StoreFAQ />
+      </section>
+    </>
   )
 }

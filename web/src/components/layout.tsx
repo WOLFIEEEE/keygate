@@ -279,6 +279,7 @@ export function PortalLayout() {
   const { t } = useI18n()
 
   const portalNav = [
+    { to: "/", label: "Store", icon: Package },
     { to: "/portal", label: t("nav.licenses"), icon: Key },
     { to: "/portal/account", label: t("nav.settings"), icon: User },
   ]
@@ -292,24 +293,22 @@ export function PortalLayout() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
-        <div className="max-w-5xl mx-auto flex items-center justify-between h-14 px-4">
+        <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3 min-h-14 py-3 px-4">
           <Link to="/portal" className="flex items-center gap-2 font-bold text-lg tracking-tight">
-            <img src={logo_url || "/logo.svg"} alt={site_name} className="h-6 w-6" />
+            <img src={logo_url || "/logo.svg"} alt="" className="h-6 w-6" />
             {site_name}
           </Link>
           <div className="flex items-center gap-4">
             {user.is_admin && (
-              <Link to="/admin">
-                <Button variant="outline" size="sm">
-                  Admin Panel
-                </Button>
-              </Link>
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/admin">Admin Panel</Link>
+              </Button>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2">
                   <User className="h-4 w-4" />
-                  {user.name || user.email}
+                  <span className="max-w-48 truncate">{user.name || user.email}</span>
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
@@ -325,10 +324,12 @@ export function PortalLayout() {
         </div>
         {/* Portal navigation */}
         <div className="max-w-5xl mx-auto px-4">
-          <nav className="flex gap-1 -mb-px">
+          <nav className="flex flex-wrap gap-1 -mb-px" aria-label="Account navigation">
             {portalNav.map((item) => {
               const active =
-                item.to === "/portal" ? location.pathname === "/portal" : location.pathname.startsWith(item.to)
+                item.to === "/" || item.to === "/portal"
+                  ? location.pathname === item.to
+                  : location.pathname.startsWith(item.to)
               return (
                 <Link key={item.to} to={item.to}>
                   <div
@@ -359,7 +360,7 @@ export function PortalLayout() {
           href={attribution_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           {attribution_text}
         </a>

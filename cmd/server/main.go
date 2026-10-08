@@ -1340,7 +1340,7 @@ func main() {
 
 	}
 
-	serveFrontend(r)
+	serveFrontend(r, cfg.BaseURL)
 
 	// Anything that reaches the router without matching a route. Gin's
 	// built-in answer is the string "404 page not found" as
@@ -1426,7 +1426,7 @@ var frontendAssetExts = map[string]bool{
 // route of the app's own ("/licenses/1.0", say) has an extension too,
 // so the list is explicit rather than "anything with a dot".
 func isFrontendAsset(clean string) bool {
-	return strings.HasPrefix(clean, "/assets/") || frontendAssetExts[strings.ToLower(filepath.Ext(clean))]
+	return strings.HasPrefix(clean, "/assets/") || strings.HasPrefix(clean, "/downloads/") || frontendAssetExts[strings.ToLower(filepath.Ext(clean))]
 }
 
 // newLogger builds the application logger and makes it the one that
@@ -1455,7 +1455,11 @@ func newLogger(w io.Writer) *slog.Logger {
 }
 
 // serveFrontend serves the React SPA from web/dist if it exists.
-func serveFrontend(r *gin.Engine) {
+func serveFrontend(r *gin.Engine, baseURLs ...string) {
+	baseURL := "https://license.accessible.org"
+	if len(baseURLs) > 0 {
+		baseURL = strings.TrimRight(baseURLs[0], "/")
+	}
 	distPath := "web/dist"
 	if _, err := os.Stat(distPath); os.IsNotExist(err) {
 		return
@@ -1486,6 +1490,9 @@ func serveFrontend(r *gin.Engine) {
 					// Every name under /assets carries a content hash,
 					// so one URL never changes what it holds.
 					c.Header("Cache-Control", "public, max-age=31536000, immutable")
+				}
+				if strings.HasPrefix(clean, "/downloads/") && strings.HasSuffix(clean, ".zip") {
+					c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(clean)+"\"")
 				}
 				c.File(filePath)
 				c.Abort()
@@ -1518,7 +1525,7 @@ func serveFrontend(r *gin.Engine) {
 		// cache across a deploy; what it points at may be cached
 		// forever.
 		c.Header("Cache-Control", "no-cache")
-		c.Data(http.StatusOK, "text/html; charset=utf-8", html)
+		c.Data(http.StatusOK, "text/html; charset=utf-8", storefrontHTML(html, path, baseURL))
 		c.Abort()
 	})
 }

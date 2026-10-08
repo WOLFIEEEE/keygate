@@ -163,6 +163,15 @@ func Provision(ctx context.Context, st *store.Store, signer *service.ReleaseSign
 					return err
 				}
 			}
+			if s.ProductSlug == "accessible-forms-pro" {
+				// Brand the owner/customer flow on first configuration, preserving
+				// branding subsequently chosen in the dashboard.
+				for k, v := range map[string]string{"brand_color": "#176cb3", "logo_url": "/accessible-forms-icon.png"} {
+					if _, err := tx.NewRaw("INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value WHERE settings.value=''", k, v).Exec(ctx); err != nil {
+						return err
+					}
+				}
+			}
 			if s.PublisherKey != "" {
 				key := &model.APIKey{ID: store.NewID(), ProductID: prod.ID, Name: "Configured release publisher", KeyHash: store.HashAPIKey(s.PublisherKey), Prefix: s.PublisherKey[:8], Scopes: []string{model.ScopeReleasesWrite}}
 				if _, err := tx.NewInsert().Model(key).On("CONFLICT (key_hash) DO NOTHING").Exec(ctx); err != nil {

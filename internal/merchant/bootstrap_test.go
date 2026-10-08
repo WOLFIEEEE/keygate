@@ -147,6 +147,20 @@ func TestProvisionStoreAndSignedRelease(t *testing.T) {
 	if portal, _ := st.GetSetting(ctx, "stripe_portal_configuration_id"); portal != "bpc_fixture" {
 		t.Fatal("portal was not configured")
 	}
+	for key, expected := range map[string]string{"brand_color": "#176cb3", "logo_url": "/accessible-forms-icon.png"} {
+		if got, err := st.GetSetting(ctx, key); err != nil || got != expected {
+			t.Fatalf("default %s: %q %v", key, got, err)
+		}
+	}
+	if err := st.SetSetting(ctx, "brand_color", "#065f46"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Provision(ctx, st, signer, cfg, settings); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.GetSetting(ctx, "brand_color"); got != "#065f46" {
+		t.Fatal("restart replaced the owner's custom brand color")
+	}
 	_, key, err := st.FindProductByAPIKey(ctx, store.HashAPIKey(settings.PublisherKey))
 	if err != nil || len(key.Scopes) != 1 || key.Scopes[0] != "releases:write" {
 		t.Fatal("publisher key has wrong permissions")
