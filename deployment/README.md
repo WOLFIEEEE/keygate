@@ -50,6 +50,14 @@ Public pages provide product-specific metadata to search crawlers and link previ
 
 Checkout stays closed while prices, Stripe, email, the webhook or a signed deliverable are missing. A configured email provider still needs a real delivery check; SMTP authentication alone does not establish inbox delivery. Test checkout, purchase email, activation, renewal and refunds with your intended Stripe account before opening the paid store. Live billing was not exercised during local development.
 
+## Daily database health check
+
+The server automatically reads its migration table once after startup and every 24 hours while it is running, using the existing `DATABASE_URL`. Each check has a ten-second timeout. Search the server logs for `database_healthcheck`: successful checks have `status=ok`; failures have `status=error` and a safe reason (`timeout` or `query_failed`). Connection credentials and raw driver errors are never included in these log entries. Failed checks are logged and the next scheduled check still runs. Server shutdown cancels any check in progress.
+
+This works with local PostgreSQL, Render PostgreSQL and Supabase PostgreSQL. For a Render app connected to Supabase, use the Session pooler connection string on port 5432 with TLS, keep it in the server's private environment, and disable Supabase's unused Data API. The Compose startup helper in this folder currently provisions its own PostgreSQL; a Render deployment must supply the external connection through its environment instead.
+
+The schedule requires an always-on server; it does not run while the host is stopped or sleeping. The startup check runs again after a restart, followed by the next 24-hour schedule. It is a database health check, not a backup or a guarantee against free-project pausing. Supabase determines activity eligibility and says a few user database requests each day are typically sufficient, so a single daily check alone cannot guarantee that a Free project stays active. Monitor Supabase's pause notices and retain independent backups. See [Supabase's project-pausing policy](https://supabase.com/docs/guides/platform/free-project-pausing).
+
 ## Subsequent releases and configuration changes
 
 When releasing a new Free plugin, replace the versioned ZIP and its adjacent source manifest in `web/public/downloads/`, update `web/src/lib/accessible-forms.ts` with its version, checksum and requirements, and rebuild the server. Keep the feature descriptions there and the product guide consistent with released capabilities. The public Free ZIP is independent of the licensed Pro artifact and must never contain private configuration or publishing keys. Update `web/e2e/storefront.mjs`'s installer checksum/version when replacing this reviewed package.

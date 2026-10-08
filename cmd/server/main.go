@@ -536,6 +536,8 @@ func main() {
 
 	go webhookSvc.StartRetryLoop(ctx, webhookRetryInterval)
 
+	go service.NewDatabaseHealthChecker(db.CheckDatabaseHealth, logger).Start(ctx)
+
 	go floatingSvc.StartCleanupLoop(ctx, time.Minute)
 
 	go expiryChecker.StartExpiryLoop(ctx)
