@@ -47,7 +47,9 @@ type StripeHandler struct {
 	// Every inbound webhook event whose Livemode differs is rejected
 	// with 400 — guards against cross-environment delivery (test
 	// secret leaking + replay into prod, or vice versa).
-	Livemode bool
+	Livemode      bool
+	CheckoutReady func(context.Context) bool
+	AutomaticTax  bool
 
 	// pendingAfter is where the last SyncPendingCheckouts round
 	// stopped when it hit its per-round cap; nil starts from the oldest
@@ -112,6 +114,10 @@ func (h *StripeHandler) isSameOrigin(raw string) bool {
 }
 
 func (h *StripeHandler) CreateCheckoutSession(c *gin.Context) {
+	if h.CheckoutReady != nil && !h.CheckoutReady(c.Request.Context()) {
+		response.Err(c, 503, "STORE_NOT_READY", "checkout is not available until store setup is complete")
+		return
+	}
 	var req struct {
 		PriceID    string `json:"price_id" binding:"required"`
 		Email      string `json:"email"`
@@ -155,6 +161,7 @@ func (h *StripeHandler) CreateCheckoutSession(c *gin.Context) {
 		CancelURL:           stripe.String(cancel),
 		AllowPromotionCodes: stripe.Bool(true),
 	}
+	h.applyAutomaticTax(params)
 	params.Metadata = map[string]string{
 		"plan_id":       plan.ID,
 		"product_id":    plan.ProductID,
@@ -176,6 +183,10 @@ func (h *StripeHandler) CreateCheckoutSession(c *gin.Context) {
 // CheckoutByPlan handles GET /pay/:checkout_id — looks up plan by checkout_id,
 // creates a Stripe Checkout Session, and redirects to Stripe.
 func (h *StripeHandler) CheckoutByPlan(c *gin.Context) {
+	if h.CheckoutReady != nil && !h.CheckoutReady(c.Request.Context()) {
+		c.String(http.StatusServiceUnavailable, "store setup is not yet complete")
+		return
+	}
 	checkoutID := c.Param("checkout_id")
 	if len(checkoutID) != 8 {
 		c.String(http.StatusBadRequest, "invalid checkout id")
@@ -223,6 +234,7 @@ func (h *StripeHandler) CheckoutByPlan(c *gin.Context) {
 		CancelURL:           stripe.String(h.BaseURL + "/pricing"),
 		AllowPromotionCodes: stripe.Bool(true),
 	}
+	h.applyAutomaticTax(params)
 	params.Metadata = map[string]string{
 		"plan_id":       plan.ID,
 		"product_id":    plan.ProductID,
@@ -2344,6 +2356,7 @@ func (h *StripeHandler) RenewUpdates(c *gin.Context) {
 	} else {
 		params.CustomerEmail = stripe.String(lic.Email)
 	}
+	h.applyAutomaticTax(params)
 	params.Metadata = map[string]string{
 		metaKind:        kindRenewal,
 		metaLicenseID:   lic.ID,
@@ -2757,6 +2770,13 @@ func (h *StripeHandler) CreatePortalSession(c *gin.Context) {
 	params := &stripe.BillingPortalSessionParams{
 		Customer:  stripe.String(lic.StripeCustomerID),
 		ReturnURL: stripe.String(returnURL),
+	}
+	if !h.isSameOrigin(returnURL) {
+		response.BadRequest(c, "return_url must be on this store")
+		return
+	}
+	if configuration, _ := h.Store.GetSetting(c, "stripe_portal_configuration_id"); configuration != "" {
+		params.Configuration = stripe.String(configuration)
 	}
 	s, err := portalsession.New(params)
 	if err != nil {

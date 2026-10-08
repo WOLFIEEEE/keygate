@@ -156,7 +156,7 @@ func (h *SystemHandler) fetchLatestRelease() *updateInfo {
 	info.ReleaseDate = release.PublishedAt
 	info.Changelog = release.Body
 	info.Available = semverNewer(stripV(release.TagName), stripV(version.Version))
-	info.UpdateCommand = "docker pull ghcr.io/" + h.RepoOwner + "/" + h.RepoName + ":" + stripV(release.TagName)
+	info.UpdateCommand = "docker pull ghcr.io/" + strings.ToLower(h.RepoOwner+"/"+h.RepoName) + ":" + stripV(release.TagName)
 
 	return info
 }

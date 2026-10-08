@@ -29,9 +29,11 @@ const WordPressPlatform = "wordpress"
 // WordPress site's identity. Licenses grant updates; installed plugin features
 // are never switched off by this API.
 type WordPressService struct {
-	store    *store.Store
-	licenses *LicenseService
-	releases *ReleaseService
+	BaseURL         string
+	DownloadOrigins []string
+	store           *store.Store
+	licenses        *LicenseService
+	releases        *ReleaseService
 }
 
 func NewWordPressService(st *store.Store, licenses *LicenseService, releases *ReleaseService) *WordPressService {
@@ -57,14 +59,15 @@ type WordPressUpdateResult struct {
 // Package is deliberately short-lived: the client must request Download again
 // immediately before an upgrade, rather than reuse WordPress's cached URL.
 type WordPressPluginUpdate struct {
-	Name             string    `json:"name"`
-	Slug             string    `json:"slug"`
-	Version          string    `json:"version"`
-	URL              string    `json:"url"`
-	Package          string    `json:"package"`
-	PackageExpiresAt time.Time `json:"package_expires_at"`
-	SHA256           string    `json:"sha256"`
-	ReleaseNotes     string    `json:"release_notes"`
+	Name             string                   `json:"name"`
+	Slug             string                   `json:"slug"`
+	Version          string                   `json:"version"`
+	URL              string                   `json:"url"`
+	Package          string                   `json:"package"`
+	PackageExpiresAt time.Time                `json:"package_expires_at"`
+	SHA256           string                   `json:"sha256"`
+	ReleaseNotes     string                   `json:"release_notes"`
+	WordPress        *model.WordPressMetadata `json:"wordpress_metadata,omitempty"`
 }
 
 func (s *WordPressService) Activate(ctx context.Context, in WordPressInput) (*ActivateResult, error) {
@@ -134,6 +137,7 @@ func (s *WordPressService) Update(ctx context.Context, in WordPressInput) (*Word
 		Name: prod.Name, Slug: prod.Slug, Version: rel.Version, URL: prod.DownloadURL,
 		Package: download.URL, PackageExpiresAt: download.ExpiresAt,
 		SHA256: download.SHA256, ReleaseNotes: rel.ReleaseNotes,
+		WordPress: download.WordPress,
 	}
 	return out, nil
 }
@@ -158,10 +162,64 @@ func (s *WordPressService) Download(ctx context.Context, in WordPressInput) (*Do
 }
 
 func (s *WordPressService) verify(ctx context.Context, in WordPressInput, prod *model.Product, site wordpressSite) (*VerifyResult, error) {
-	return s.licenses.Verify(ctx, VerifyInput{
+	verified, err := s.licenses.Verify(ctx, VerifyInput{
 		LicenseKey: strings.TrimSpace(in.LicenseKey), ProductID: prod.ID,
 		Identifier: site.identifier, IPAddress: in.IPAddress,
 	})
+	if err != nil {
+		return nil, err
+	}
+	lic, err := s.store.FindLicenseByKey(ctx, strings.TrimSpace(in.LicenseKey))
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	verified.ActiveSites, err = s.store.CountActivations(ctx, lic.ID)
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	verified.MaxSites = s.licenses.maxActivations(lic)
+	if lic.Plan != nil {
+		verified.LicenseType = lic.Plan.LicenseType
+	}
+	return verified, nil
+}
+
+// Info announces releases without revealing storage keys or download links.
+func (s *WordPressService) Info(ctx context.Context, slug string) (*WordPressPluginUpdate, error) {
+	prod, err := s.store.FindProductBySlug(ctx, slug)
+	if err != nil || !model.ProductSupports(prod.Type, model.CapReleases) {
+		return nil, licenseNotFound()
+	}
+	rel, err := s.releases.findLatestPublished(ctx, prod.ID, model.ReleaseChannelStable, WordPressPlatform, nil)
+	if errors.Is(err, ErrReleaseNoneAvailable) {
+		return nil, apperr.New(404, "NO_RELEASE", "no WordPress release is published")
+	}
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	out := &WordPressPluginUpdate{Name: prod.Name, Slug: prod.Slug, Version: rel.Version, URL: prod.DownloadURL, ReleaseNotes: rel.ReleaseNotes}
+	for _, a := range rel.Artifacts {
+		if a.Platform == WordPressPlatform {
+			out.WordPress = a.WordPress
+		}
+	}
+	return out, nil
+}
+
+func (s *WordPressService) PublicConfig(ctx context.Context, slug string) (map[string]any, error) {
+	prod, err := s.store.FindProductBySlug(ctx, slug)
+	if err != nil {
+		return nil, licenseNotFound()
+	}
+	keys, err := s.store.ListSigningKeys(ctx, prod.ID)
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	public := map[string]string{}
+	for _, k := range keys {
+		public[k.ID] = k.PublicKey
+	}
+	return map[string]any{"base_url": s.BaseURL, "download_origins": s.DownloadOrigins, "product_id": prod.ID, "product_slug": prod.Slug, "public_keys": public, "meta": responseMeta()}, nil
 }
 
 func (s *WordPressService) request(ctx context.Context, in WordPressInput) (*model.Product, wordpressSite, error) {

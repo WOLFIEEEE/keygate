@@ -1,0 +1,5 @@
+FROM postgres:18-alpine
+RUN apk add --no-cache age rclone
+COPY scripts/backup.sh /usr/local/bin/accessible-backup
+RUN chmod 755 /usr/local/bin/accessible-backup
+ENTRYPOINT ["/usr/local/bin/accessible-backup"]

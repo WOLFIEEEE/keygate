@@ -110,7 +110,8 @@ local-down: ## Stop local services, retaining the development database
 local-logs: ## Show local server logs (includes development login codes)
 	docker compose -f compose.dev.yaml logs -f keygate
 
-local-test: ## Run all Go tests against a separate disposable PostgreSQL database
+local-test: ## Run all Go tests against a fresh disposable PostgreSQL database
+	docker compose -f compose.dev.yaml --profile test rm -sf postgres-test
 	docker compose -f compose.dev.yaml --profile test run --rm test
 
 # ─── Clean ────────────────────────────────────────

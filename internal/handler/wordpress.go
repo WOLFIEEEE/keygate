@@ -101,3 +101,23 @@ func (h *WordPressHandler) Download(c *gin.Context) {
 	}
 	response.OK(c, out)
 }
+
+func (h *WordPressHandler) Info(c *gin.Context) {
+	c.Header("Cache-Control", "public, max-age=300")
+	out, err := h.svc.Info(c.Request.Context(), c.Param("product_slug"))
+	if err != nil {
+		writeAppErr(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+func (h *WordPressHandler) Config(c *gin.Context) {
+	c.Header("Cache-Control", "public, max-age=300")
+	out, err := h.svc.PublicConfig(c.Request.Context(), c.Param("product_slug"))
+	if err != nil {
+		writeAppErr(c, err)
+		return
+	}
+	response.OK(c, out)
+}

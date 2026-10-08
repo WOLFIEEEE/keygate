@@ -16,6 +16,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  deployment:
+    name: Deployment configuration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configuration recovery and validation
+        run: python3 -m unittest discover -s deployment/scripts -p 'test_*.py'
+      - name: Shell syntax
+        run: sh -n deployment/start.sh deployment/restore.sh deployment/scripts/backup.sh
+
   backend:
     name: Backend
     runs-on: ubuntu-latest

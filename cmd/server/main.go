@@ -28,6 +28,7 @@ import (
 	"github.com/tabloy/keygate/internal/crypto"
 	"github.com/tabloy/keygate/internal/handler"
 	"github.com/tabloy/keygate/internal/license"
+	"github.com/tabloy/keygate/internal/merchant"
 	"github.com/tabloy/keygate/internal/middleware"
 	"github.com/tabloy/keygate/internal/model"
 	"github.com/tabloy/keygate/internal/payment"
@@ -42,7 +43,7 @@ import (
 // reach a log line. An updater sends a signed token this way when it
 // cannot set a header; the license key itself is refused in the URL,
 // but a client that tries still must not have it logged.
-var credentialQueryParams = []string{"license_key", "license_token"}
+var credentialQueryParams = []string{"license_key", "license_token", "signature"}
 
 // credentialPathPrefixes name the routes that carry a credential as a
 // path segment rather than a parameter. The customer portal addresses
@@ -282,14 +283,31 @@ func main() {
 	// stub so the server still boots. Release endpoints will return 503 when
 	// they reach storage; license/billing functions are unaffected.
 	var releaseStorage storage.Storage = storage.Disabled{}
-	if cfg.IsStorageEnabled() {
+	var filesystemStorage *storage.Filesystem
+	if cfg.StorageLocalPath != "" {
+		master, err := hex.DecodeString(cfg.ReleaseKeyEncryptionKey)
+		if err != nil {
+			log.Fatal("filesystem storage requires a valid master encryption key")
+		}
+		secret, err := crypto.DeriveSubkey(master, "filesystem-artifact-url")
+		if err != nil {
+			log.Fatalf("filesystem storage: %v", err)
+		}
+		filesystemStorage, err = storage.NewFilesystem(cfg.StorageLocalPath, cfg.BaseURL, secret, cfg.MaxReleaseSignSize)
+		if err != nil {
+			log.Fatalf("filesystem storage: %v", err)
+		}
+		releaseStorage = filesystemStorage
+		logger.Info("storage: private filesystem initialized")
+	} else if cfg.IsStorageEnabled() {
 		s3, err := storage.NewS3(context.Background(), storage.S3Config{
-			Endpoint:       cfg.StorageEndpoint,
-			Region:         cfg.StorageRegion,
-			Bucket:         cfg.StorageBucket,
-			AccessKey:      cfg.StorageAccessKey,
-			SecretKey:      cfg.StorageSecretKey,
-			ForcePathStyle: cfg.StorageForcePathStyle,
+			Endpoint:        cfg.StorageEndpoint,
+			SigningEndpoint: cfg.StorageSigningEndpoint,
+			Region:          cfg.StorageRegion,
+			Bucket:          cfg.StorageBucket,
+			AccessKey:       cfg.StorageAccessKey,
+			SecretKey:       cfg.StorageSecretKey,
+			ForcePathStyle:  cfg.StorageForcePathStyle,
 		})
 		if err != nil {
 			logger.Error("storage: init failed; release endpoints will be disabled", "error", err)
@@ -402,7 +420,15 @@ func main() {
 	})
 
 	licenseH := handler.NewLicenseHandler(licenseSvc)
-	wordpressH := handler.NewWordPressHandler(service.NewWordPressService(db, licenseSvc, releaseSvc))
+	wordpressSvc := service.NewWordPressService(db, licenseSvc, releaseSvc)
+	wordpressSvc.BaseURL = cfg.BaseURL
+	wordpressSvc.DownloadOrigins = []string{}
+	if probe, err := releaseStorage.PresignedGet(context.Background(), ".config-origin", "", time.Minute); err == nil {
+		if parsed, err := url.Parse(probe); err == nil {
+			wordpressSvc.DownloadOrigins = append(wordpressSvc.DownloadOrigins, parsed.Scheme+"://"+parsed.Host)
+		}
+	}
+	wordpressH := handler.NewWordPressHandler(wordpressSvc)
 	authH := &handler.AuthHandler{Store: db, Config: cfg, Email: emailSvc}
 	stripeH := &payment.StripeHandler{
 		Store:         db,
@@ -411,6 +437,7 @@ func main() {
 		Email:         emailSvc,
 		WebhookSvc:    webhookSvc,
 		Livemode:      cfg.StripeLivemode,
+		AutomaticTax:  strings.EqualFold(os.Getenv("STRIPE_AUTOMATIC_TAX"), "true"),
 	}
 	// Initialize thread-safe webhook secret with config value
 	stripeH.SetWebhookSecret(cfg.StripeWebhookSecret)
@@ -454,6 +481,13 @@ func main() {
 	floatingH := handler.NewFloatingHandler(floatingSvc)
 	webhookAdminH := handler.NewWebhookAdminHandler(db, webhookSvc)
 	systemH := handler.NewSystemHandler(db)
+	if repo := os.Getenv("KEYGATE_UPDATE_REPO"); repo != "" {
+		pieces := strings.Split(repo, "/")
+		if len(pieces) != 2 || pieces[0] == "" || pieces[1] == "" {
+			log.Fatal("KEYGATE_UPDATE_REPO must be owner/repository")
+		}
+		systemH.RepoOwner, systemH.RepoName = pieces[0], pieces[1]
+	}
 	releaseAdminH := handler.NewReleaseAdminHandler(releaseSvc, db)
 	releasePublicH := handler.NewReleasePublicHandler(handler.ReleasePublicConfig{
 		Service:     releaseSvc,
@@ -476,6 +510,21 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	merchantSettings, err := merchant.FromEnvironment()
+	if err != nil {
+		log.Fatalf("store configuration: %v", err)
+	}
+	provisionCtx, provisionCancel := context.WithTimeout(ctx, 90*time.Second)
+	if err := merchant.Provision(provisionCtx, db, releaseSigner, cfg, merchantSettings); err != nil {
+		provisionCancel()
+		log.Fatalf("store setup: %v", err)
+	}
+	provisionCancel()
+	if merchantSettings != nil {
+		stripeH.CheckoutReady = func(checkCtx context.Context) bool {
+			return len(merchant.Readiness(checkCtx, db, cfg, merchantSettings, stripeH.GetWebhookSecret(), releaseStorage)) == 0
+		}
+	}
 
 	// Auto-setup Stripe webhook endpoint if:
 	// - Stripe secret key is configured
@@ -676,6 +725,18 @@ func main() {
 	r.StaticFile("/docs/openapi.yaml", "docs/openapi.yaml")
 
 	v1 := r.Group("/api/v1")
+	if filesystemStorage != nil {
+		r.Any(storage.FilesystemRoute, gin.WrapH(filesystemStorage))
+	}
+	r.GET("/ready", func(c *gin.Context) {
+		issues := merchant.Readiness(c.Request.Context(), db, cfg, merchantSettings, stripeH.GetWebhookSecret(), releaseStorage)
+		code := http.StatusOK
+		if len(issues) > 0 {
+			code = http.StatusServiceUnavailable
+		}
+		c.Header("Cache-Control", "no-store")
+		c.JSON(code, gin.H{"ready": len(issues) == 0, "checks_pending": issues})
+	})
 
 	v1.GET("/version", systemH.GetVersion)
 
@@ -775,6 +836,8 @@ func main() {
 	wp.POST("/deactivate", wordpressH.Deactivate)
 	wp.POST("/update", wordpressH.Update)
 	wp.POST("/download", wordpressH.Download)
+	v1.GET("/wordpress/:product_slug/info", middleware.RateLimitByIPScoped("wordpress_info", 60, time.Minute), wordpressH.Info)
+	v1.GET("/wordpress/:product_slug/config", middleware.RateLimitByIPScoped("wordpress_info", 60, time.Minute), wordpressH.Config)
 
 	// Public invite acceptance — the token is proof of email
 	// ownership (we mailed it to the invitee), so no session auth
@@ -1407,7 +1470,7 @@ func serveFrontend(r *gin.Engine) {
 		path := c.Request.URL.Path
 
 		// Let backend routes pass through.
-		if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/pay/") || path == "/health" || path == "/metrics" || path == "/docs" || strings.HasPrefix(path, "/docs/") {
+		if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/pay/") || path == "/health" || path == "/ready" || path == "/metrics" || path == "/docs" || strings.HasPrefix(path, "/docs/") {
 			c.Next()
 			return
 		}

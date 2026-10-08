@@ -21,12 +21,13 @@ import (
 // It is decoupled from the application config struct so this package has no
 // dependency on internal/config.
 type S3Config struct {
-	Endpoint       string // empty = AWS S3 default endpoint
-	Region         string // R2 wants "auto"; AWS wants real region
-	Bucket         string
-	AccessKey      string
-	SecretKey      string
-	ForcePathStyle bool
+	Endpoint        string // empty = AWS S3 default endpoint
+	SigningEndpoint string // optional externally reachable endpoint; ordinary I/O stays internal
+	Region          string // R2 wants "auto"; AWS wants real region
+	Bucket          string
+	AccessKey       string
+	SecretKey       string
+	ForcePathStyle  bool
 }
 
 // S3Storage is an S3-compatible object store implementation.
@@ -67,6 +68,9 @@ func NewS3(_ context.Context, c S3Config) (*S3Storage, error) {
 	if err := validateEndpoint(c.Endpoint); err != nil {
 		return nil, err
 	}
+	if err := validateEndpoint(c.SigningEndpoint); err != nil {
+		return nil, err
+	}
 
 	region := c.Region
 	if region == "" {
@@ -85,9 +89,16 @@ func NewS3(_ context.Context, c S3Config) (*S3Storage, error) {
 		o.UsePathStyle = c.ForcePathStyle
 	})
 
+	signingClient := client
+	if c.SigningEndpoint != "" {
+		signingClient = s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(c.SigningEndpoint)
+			o.UsePathStyle = c.ForcePathStyle
+		})
+	}
 	return &S3Storage{
 		client:    client,
-		presigner: s3.NewPresignClient(client),
+		presigner: s3.NewPresignClient(signingClient),
 		bucket:    c.Bucket,
 	}, nil
 }
