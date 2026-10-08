@@ -3,6 +3,12 @@
 .claude
 .env
 .env.*
+deployment/.env
+deployment/.env.*
+deployment/secrets/
+deployment/backups/
+deployment/artifacts/
+deployment/.restore-*/
 bin/
 tmp/
 tests/

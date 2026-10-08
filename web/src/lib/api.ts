@@ -169,6 +169,8 @@ export const invites = {
 
 // ─── Portal ───
 export const portal = {
+  downloadWordPress: (licenseId: string) =>
+    post<{ url: string; version: string }>("/portal/downloads/wordpress", { license_id: licenseId }),
   licenses: () => get<{ licenses: PortalLicense[]; renewals_enabled?: boolean }>("/portal/licenses"),
   listPlans: (productId: string) => get<{ plans: Plan[] }>(`/portal/plans?product_id=${productId}`),
   updateProfile: (data: { name: string }) =>

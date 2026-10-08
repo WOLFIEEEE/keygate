@@ -25,6 +25,7 @@ import CheckoutSuccessPage from "@/pages/checkout-success"
 import LoginPage from "@/pages/login"
 import PortalAccountPage from "@/pages/portal/account"
 import PortalLicensesPage from "@/pages/portal/licenses"
+import PricingPage from "@/pages/pricing"
 import SetupPage from "@/pages/setup"
 import "./index.css"
 
@@ -52,6 +53,8 @@ createRoot(document.getElementById("root")!).render(
                   <Routes>
                     <Route path="/setup" element={<SetupPage />} />
                     <Route path="/login" element={<LoginPage />} />
+                    <Route path="/pricing" element={<PricingPage />} />
+                    <Route path="/" element={<Navigate to="/pricing" replace />} />
                     <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
                     <Route path="/accept-invite" element={<AcceptInvitePage />} />
 

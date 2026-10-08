@@ -94,6 +94,20 @@ function LicenseCard({ license: lic, renewalsEnabled }: { license: PortalLicense
   const [showInvoices, setShowInvoices] = useState(false)
   const [showChangePlan, setShowChangePlan] = useState(false)
   const [showCancel, setShowCancel] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState("")
+  const downloadInstaller = async () => {
+    setDownloading(true)
+    setDownloadError("")
+    try {
+      const download = await portal.downloadWordPress(lic.id)
+      window.location.assign(download.url)
+    } catch {
+      setDownloadError("The installer could not be downloaded. Check your license status or try again shortly.")
+    } finally {
+      setDownloading(false)
+    }
+  }
   const productType = lic.product?.type || "perpetual"
   const showUsage = productType === "saas" || productType === "hybrid"
   // Seats UI shows for any plan that *could* have more than one seat.
@@ -175,6 +189,22 @@ function LicenseCard({ license: lic, renewalsEnabled }: { license: PortalLicense
         </div>
 
         {/* Overview stats */}
+        {isOwner && lic.product?.slug === "accessible-forms-pro" && (
+          <div className="space-y-2">
+            <Button onClick={downloadInstaller} disabled={downloading}>
+              {downloading ? "Preparing download…" : "Download Accessible Forms Pro"}
+            </Button>
+            <p className="text-sm text-muted-foreground">
+              Install the Free plugin first, then upload this Pro ZIP and connect your license in Accessible Forms → Pro
+              license.
+            </p>
+            {downloadError && (
+              <p role="alert" className="text-sm text-destructive">
+                {downloadError}
+              </p>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
             <p className="text-muted-foreground">{t("portal.validFrom")}</p>

@@ -929,6 +929,7 @@ func main() {
 	portal := v1.Group("/portal", middleware.SessionAuth(cfg.JWTSecret, db.FindUserIsAdmin))
 	{
 		portal.GET("/me", authH.Me)
+		portal.POST("/downloads/wordpress", middleware.RateLimitByIPScoped("portal_download", 30, time.Minute), (&handler.PortalDownloadsHandler{Store: db, Releases: releaseSvc}).Download)
 		portal.GET("/licenses", func(c *gin.Context) {
 			emailVal, _ := c.Get("email")
 			emailStr, ok := emailVal.(string)

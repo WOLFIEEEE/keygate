@@ -130,6 +130,7 @@ func (h *PublicPlansHandler) ListPlans(c *gin.Context) {
 			"id": p.ID, "name": p.Name, "slug": p.Slug,
 			"license_type": p.LicenseType, "billing_interval": p.BillingInterval,
 			"checkout_id": p.CheckoutID,
+			"max_sites":   p.MaxActivations,
 			"price":       nil,
 			"currency":    nil,
 		}
