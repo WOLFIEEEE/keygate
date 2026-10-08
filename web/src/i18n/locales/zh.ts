@@ -357,6 +357,7 @@ const zh = {
   "settings.language": "语言",
   "settings.languageDesc": "界面语言。",
   "settings.brandColor": "品牌颜色",
+  "settings.brandColorHex": "品牌颜色十六进制值",
   "settings.brandColorDesc": "整个界面使用的主色调。留空则使用默认紫色。",
   "settings.logoUrl": "自定义 Logo URL",
   "settings.logoUrlDesc": "Logo 图片的 URL（推荐 SVG 格式）。留空则使用默认 Keygate Logo。",
@@ -473,6 +474,12 @@ const zh = {
   // Pagination
   "pagination.of": "/",
   "pagination.rows": "每页",
+  "pagination.rowsPerPage": "每页行数",
+  "pagination.first": "第一页",
+  "pagination.previous": "上一页",
+  "pagination.next": "下一页",
+  "pagination.last": "最后一页",
+  "pagination.page": "第 {page} 页",
 
   // Login
   "setup.title": "设置 Keygate",

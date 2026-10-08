@@ -172,7 +172,7 @@ function DataTablePagination({
             <div className="flex items-center gap-1.5">
               <span className="whitespace-nowrap">{t("common.rowsPerPage")}</span>
               <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-                <SelectTrigger className="h-7 w-16 text-xs">
+                <SelectTrigger className="h-7 w-16 text-xs" aria-label={t("pagination.rowsPerPage")}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -189,13 +189,21 @@ function DataTablePagination({
       </div>
 
       <div className="flex items-center justify-center gap-1 sm:justify-end">
-        <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page === 0} onClick={() => onPageChange(0)}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          aria-label={t("pagination.first")}
+          disabled={page === 0}
+          onClick={() => onPageChange(0)}
+        >
           <ChevronsLeft className="h-3.5 w-3.5" />
         </Button>
         <Button
           variant="ghost"
           size="icon"
           className="h-7 w-7"
+          aria-label={t("pagination.previous")}
           disabled={page === 0}
           onClick={() => onPageChange(page - 1)}
         >
@@ -225,6 +233,8 @@ function DataTablePagination({
                 variant={p === page ? "default" : "ghost"}
                 size="icon"
                 className={cn("h-7 w-7 text-xs", p === page && "pointer-events-none")}
+                aria-label={t("pagination.page", { page: p + 1 })}
+                aria-current={p === page ? "page" : undefined}
                 onClick={() => onPageChange(p)}
               >
                 {p + 1}
@@ -237,6 +247,7 @@ function DataTablePagination({
           variant="ghost"
           size="icon"
           className="h-7 w-7"
+          aria-label={t("pagination.next")}
           disabled={page >= totalPages - 1}
           onClick={() => onPageChange(page + 1)}
         >
@@ -246,6 +257,7 @@ function DataTablePagination({
           variant="ghost"
           size="icon"
           className="h-7 w-7"
+          aria-label={t("pagination.last")}
           disabled={page >= totalPages - 1}
           onClick={() => onPageChange(totalPages - 1)}
         >

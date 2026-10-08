@@ -148,7 +148,7 @@ export function AdminLayout() {
           const group = entry as NavGroup
           return (
             <div key={group.label} className={cn(idx > 0 && "mt-4")}>
-              <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground/60 uppercase tracking-wider">
+              <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 {group.label}
               </div>
               {group.items.map(renderNavItem)}
@@ -195,7 +195,7 @@ export function AdminLayout() {
           href={attribution_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           {attribution_text}
         </a>
@@ -263,7 +263,7 @@ export function AdminLayout() {
             href={attribution_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             {attribution_text}
           </a>
