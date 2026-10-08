@@ -179,6 +179,7 @@ var allowedPlatforms = []string{
 	"linux-arm64",
 	"linux-x64",
 	"linux-armhf",
+	WordPressPlatform,
 }
 
 // AllowedPlatforms returns the canonical list of platform identifiers

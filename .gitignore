@@ -12,6 +12,7 @@ tmp/
 # Env
 .env
 .env.local
+.env.development
 .env.*.local
 
 # IDE

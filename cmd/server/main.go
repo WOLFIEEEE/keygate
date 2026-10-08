@@ -402,6 +402,7 @@ func main() {
 	})
 
 	licenseH := handler.NewLicenseHandler(licenseSvc)
+	wordpressH := handler.NewWordPressHandler(service.NewWordPressService(db, licenseSvc, releaseSvc))
 	authH := &handler.AuthHandler{Store: db, Config: cfg, Email: emailSvc}
 	stripeH := &payment.StripeHandler{
 		Store:         db,
@@ -762,6 +763,18 @@ func main() {
 		lic.POST("/floating/heartbeat", floatingH.Heartbeat)
 		lic.POST("/download", releasePublicH.Download)
 	}
+
+	// WordPress clients send their home URL in the body, so activations are
+	// scoped to both the product and the installation. Reuse the license
+	// rate-limit bucket and brute-force guard instead of adding a second budget.
+	wp := v1.Group("/wordpress/:product_slug",
+		middleware.LicenseBruteForceGuard(bf),
+		middleware.RateLimitByIPScoped("license", licRateLimit, time.Minute))
+	wp.POST("/activate", wordpressH.Activate)
+	wp.POST("/verify", wordpressH.Verify)
+	wp.POST("/deactivate", wordpressH.Deactivate)
+	wp.POST("/update", wordpressH.Update)
+	wp.POST("/download", wordpressH.Download)
 
 	// Public invite acceptance — the token is proof of email
 	// ownership (we mailed it to the invitee), so no session auth

@@ -1051,6 +1051,7 @@ export const RELEASE_PLATFORMS = [
   "linux-arm64",
   "linux-x64",
   "linux-armhf",
+  "wordpress",
 ] as const
 
 export const RELEASE_CHANNELS = ["stable", "beta", "alpha", "dev"] as const

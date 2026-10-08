@@ -84,6 +84,8 @@ tags:
     description: Concurrent session checkout for floating licenses
   - name: Releases
     description: License-gated download + auto-update feeds (Sparkle / Velopack / Tauri)
+  - name: WordPress
+    description: Product-scoped site activation and protected plugin updates
   - name: Site
     description: Public site configuration
 
@@ -152,6 +154,142 @@ paths:
                       public_key:
                         type: string
                         description: 32-byte Ed25519 public key, hex-encoded (64 chars)
+
+  /wordpress/{product_slug}/activate:
+    parameters:
+      - $ref: "#/components/parameters/ProductSlug"
+    post:
+      tags: [WordPress]
+      summary: Activate a WordPress installation
+      description: |
+        Uses the plan's activation limit as its site limit. Send home_url('/')
+        consistently. HTTP/HTTPS, host casing, default ports and trailing
+        slashes reuse the slot. Subdirectories, www and staging are distinct.
+        The license must belong to product_slug. No merchant API key is needed.
+      requestBody:
+        $ref: "#/components/requestBodies/WordPressSite"
+      responses:
+        "200":
+          description: Activated, or the installation was already activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivateResponse"
+        "400":
+          description: Invalid JSON, license key or site URL (body limit 16 KiB)
+        "403":
+          description: License is suspended, revoked, canceled or expired
+        "404":
+          description: License or installed-software product not found
+        "409":
+          description: Maximum site activations reached
+        "429":
+          description: Rate limited or too many failed license attempts
+
+  /wordpress/{product_slug}/verify:
+    parameters:
+      - $ref: "#/components/parameters/ProductSlug"
+    post:
+      tags: [WordPress]
+      summary: Verify an activated WordPress installation
+      requestBody:
+        $ref: "#/components/requestBodies/WordPressSite"
+      responses:
+        "200":
+          description: License status, plan, maintenance cutoff and signed token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResponse"
+        "400":
+          description: Invalid JSON, license key or site URL
+        "404":
+          description: License unavailable, wrong product or site not activated
+        "429":
+          description: Rate limited or too many failed license attempts
+
+  /wordpress/{product_slug}/deactivate:
+    parameters:
+      - $ref: "#/components/parameters/ProductSlug"
+    post:
+      tags: [WordPress]
+      summary: Release a WordPress installation's activation slot
+      requestBody:
+        $ref: "#/components/requestBodies/WordPressSite"
+      responses:
+        "200":
+          description: Activation removed; data.status is deactivated
+        "400":
+          description: Invalid JSON, license key or site URL
+        "404":
+          description: License unavailable, wrong product or site not activated
+        "429":
+          description: Rate limited or too many failed license attempts
+
+  /wordpress/{product_slug}/update:
+    parameters:
+      - $ref: "#/components/parameters/ProductSlug"
+    post:
+      tags: [WordPress]
+      summary: Check for a newer entitled WordPress plugin version
+      description: |
+        Checks the site's activation and license before finding the highest
+        stable semantic version with an uploaded wordpress artifact, within
+        the license's maintenance period. Draft and yanked releases are ignored.
+        No update is a successful response with update_available=false and
+        update=null. The package URL expires; call /download immediately before
+        an upgrade, using the exact cached version, and verify the ZIP's hash.
+        Existing plugin features must keep working if this request fails.
+      requestBody:
+        $ref: "#/components/requestBodies/WordPressVersion"
+      responses:
+        "200":
+          description: Newer version's metadata, or no entitled update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WordPressUpdateResponse"
+        "400":
+          description: Invalid JSON, license key, site URL or installed version
+        "404":
+          description: License unavailable, wrong product or site not activated
+        "429":
+          description: Rate limited or too many failed license attempts
+        "503":
+          description: Artifact storage not configured
+
+  /wordpress/{product_slug}/download:
+    parameters:
+      - $ref: "#/components/parameters/ProductSlug"
+    post:
+      tags: [WordPress]
+      summary: Authorize a fresh download for an exact WordPress version
+      description: |
+        Rechecks site activation, license lifecycle, publication state and
+        maintenance entitlement. The key remains in the JSON body. Cache-Control
+        is private, no-store. The response includes a short-lived package URL
+        and the authoritative SHA-256; the client must verify the downloaded ZIP.
+      requestBody:
+        $ref: "#/components/requestBodies/WordPressVersion"
+      responses:
+        "200":
+          description: Fresh signed URL for the requested version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WordPressDownloadResponse"
+        "400":
+          description: Invalid JSON, license key, site URL or requested version
+        "403":
+          description: UPDATES_EXPIRED; release is outside the maintenance period
+        "404":
+          description: License/site unavailable or release/artifact not found
+        "410":
+          description: Requested release has been yanked
+        "429":
+          description: Rate limited or too many failed license attempts
+        "503":
+          description: Artifact storage not configured
 
   /license/activate:
     post:
@@ -676,6 +814,7 @@ paths:
                       linux-arm64,
                       linux-x64,
                       linux-armhf,
+                      wordpress,
                     ]
                 version:
                   type: string
@@ -902,6 +1041,27 @@ paths:
           description: Unknown product_slug
 
 components:
+  requestBodies:
+    WordPressSite:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WordPressSiteRequest"
+    WordPressVersion:
+      required: true
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/WordPressSiteRequest"
+              - type: object
+                required: [version]
+                properties:
+                  version:
+                    type: string
+                    example: "1.0.0"
+                    description: Installed version for update; exact requested version for download
   parameters:
     ProductSlug:
       in: path
@@ -924,6 +1084,7 @@ components:
             linux-arm64,
             linux-x64,
             linux-armhf,
+            wordpress,
           ]
     Channel:
       in: query
@@ -1001,6 +1162,57 @@ components:
         browsers attach it automatically.
 
   schemas:
+    WordPressSiteRequest:
+      type: object
+      required: [license_key, site_url]
+      properties:
+        license_key:
+          type: string
+          maxLength: 512
+          description: License credential; never place it in a URL
+        site_url:
+          type: string
+          format: uri
+          maxLength: 2048
+          example: "https://example.test/"
+          description: Absolute HTTP(S) home URL without credentials, query or fragment
+    WordPressUpdateResponse:
+      type: object
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          type: object
+          properties:
+            update_available: { type: boolean }
+            update:
+              type: [object, "null"]
+              properties:
+                name: { type: string }
+                slug: { type: string }
+                version: { type: string }
+                url: { type: string }
+                package: { type: string, format: uri }
+                package_expires_at: { type: string, format: date-time }
+                sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+                release_notes: { type: string, description: Render as escaped or sanitized content }
+            meta:
+              type: object
+              properties:
+                server: { type: string, example: Keygate }
+                url: { type: string, example: "https://keygate.app" }
+    WordPressDownloadResponse:
+      type: object
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          type: object
+          properties:
+            url: { type: string, format: uri }
+            expires_at: { type: string, format: date-time }
+            version: { type: string }
+            platform: { type: string, const: wordpress }
+            sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+            file_size: { type: integer, format: int64 }
     VelopackFeed:
       type: object
       description: Velopack's VelopackAssetFeed. SHA256 is upper case hex, as Velopack compares it.

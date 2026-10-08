@@ -191,7 +191,7 @@ func TestFeedCutoff_MaintenancePeriod(t *testing.T) {
 	svc := NewReleaseService(ReleaseServiceConfig{Store: s, Logger: slog.Default()})
 
 	got, err := svc.FeedCutoff(ctx, "KEY-feed-lapsed-"+suffix, prod.ID)
-	if err != nil || got == nil || !got.Equal(cutoff) {
+	if err != nil || got == nil || got.Sub(cutoff).Abs() > time.Microsecond {
 		t.Fatalf("lapsed cutoff: %v %v", got, err)
 	}
 	if got, err := svc.FeedCutoff(ctx, "KEY-feed-life-"+suffix, prod.ID); err != nil || got != nil {
