@@ -6,7 +6,7 @@ This folder runs the standalone licensing and billing service for Accessible For
 
 Use a Linux host with Docker Engine and the Compose plugin, persistent disk, and inbound TCP ports 80 and 443. Point the `license.accessible.org` DNS record at that host. Keep port 5432 private. A separate staging domain and database are recommended for Stripe test mode; a store refuses switching an existing database between Stripe test and live accounts.
 
-Copy `.env.example` to `.env` and fill these values. Internal secrets and product signing keys are generated automatically. No Stripe or server secrets go inside WordPress.
+Copy `.env.example` to `.env` and fill these values. Single-quote values containing `$`, `#` or spaces so Docker does not expand them. Internal secrets and product signing keys are generated automatically. No Stripe or server secrets go inside WordPress.
 
 | Value | What to enter |
 | --- | --- |
@@ -38,7 +38,7 @@ The command validates configuration and checks SMTP connectivity without sending
 Once started:
 
 - Store and checkout: `https://license.accessible.org/pricing`
-- Customer licenses, downloads and billing: `https://license.accessible.org/portal`
+- Customer licenses, installer downloads and billing: `https://license.accessible.org/portal`. The first download does not use a site activation slot; connect the key after installation.
 - Admin: sign in with the configured owner email at `https://license.accessible.org/login`, then use the admin navigation.
 - Configuration readiness: `https://license.accessible.org/ready`; process health: `/health`.
 
