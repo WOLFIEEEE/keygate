@@ -12,18 +12,22 @@ Copy `.env.example` to `.env` and fill these values. Single-quote values contain
 | --- | --- |
 | `BOOTSTRAP_OWNER_EMAIL` | Your own address; receives the admin sign-in code |
 | `STRIPE_SECRET_KEY` | Secret key for the intended Stripe account and mode; product, price, webhook, account-read and billing-portal permissions are needed |
-| `BOOTSTRAP_PLANS_JSON` | Approved prices, billing periods, currency and site limits; see below |
+| `BOOTSTRAP_PLANS_JSON` | Already set to the approved $29 USD annual single-site Pro plan; optional changes are described below |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | Your email provider's connection details and approved sender |
 | `STRIPE_AUTOMATIC_TAX` | Optional Stripe Tax, after configuring it in the Stripe account |
 | `BACKUP_REMOTE` | Optional rclone destination for encrypted off-site copies; place its credentials in `secrets/rclone.conf` |
 
 `LICENSE_DOMAIN` is already `license.accessible.org`. Leave `STRIPE_WEBHOOK_SECRET` blank: the server creates its endpoint and retains the signing secret encrypted in PostgreSQL. A Stripe CLI forwarding session in local development has a separate secret. The `RELEASE_PUBLISH_KEY` prefix is Keygate's API-key format; Stripe mode is determined by the Stripe key.
 
-Plans are a JSON array, quoted in the environment file. Amounts use the currency's smallest unit, as required by Stripe. `sites: 0` means unlimited sites. Intervals are `month`, `year` and `lifetime`; lifetime is a one-time purchase with updates for life. Subscription updates last through the paid period and any configured grace period. The following is an **example, not an approved Accessible.org price**:
+The default is **$29 USD per year for one site**, including every Pro feature and eligible updates/support during the paid period. Renewal uses the same annual price. Each additional website needs its own single-site license; customers can manage multiple licenses in one account. Taxes, when applicable, are shown at checkout. Installed Pro features keep working after the paid period ends.
+
+The approved plan is already filled in the supplied configuration. `2900` is the price in USD cents:
 
 ```dotenv
-BOOTSTRAP_PLANS_JSON='[{"slug":"personal","name":"Personal","sites":1,"amount":9900,"currency":"usd","interval":"year"}]'
+BOOTSTRAP_PLANS_JSON='[{"slug":"single-site-annual","name":"Single site","sites":1,"amount":2900,"currency":"usd","interval":"year"}]'
 ```
+
+Other plans can be supplied as a JSON array quoted in the environment file. Amounts use the currency's smallest unit. `sites: 0` means unlimited sites. Supported intervals are `month`, `year` and `lifetime`. The approved default is an annual subscription, not a lifetime or unlimited-site license. Once a plan has customers, use a new plan slug for changed terms so existing subscribers retain their price.
 
 ## Start the store
 
@@ -43,7 +47,7 @@ Once started:
 - Admin: sign in with the configured owner email at `https://license.accessible.org/login`, then use the admin navigation.
 - Configuration readiness: `https://license.accessible.org/ready`; process health: `/health`.
 
-The single purchase page includes the verified Free 1.0.0 installer, concise product details, configured Pro plans, an expandable Free/Pro comparison and installation instructions. The customer portal links back to that page beside the protected Pro download. Product details reflect the packaged plugin source; prices and site limits come from the configured public plan catalogue. Purchasing remains closed until readiness succeeds, while the Free download stays available. Canceled Stripe purchases return to the plans on this page.
+The single purchase page includes the verified Free 1.0.0 installer, concise product details, Pro plans, an expandable Free/Pro comparison and installation instructions. Before configuration, it displays the approved $29 annual single-site offer with payment disabled. Once configured, prices and site limits come from the live public plan catalogue. The customer portal links back to that page beside the protected Pro download. Purchasing remains closed until readiness succeeds, while the Free download stays available. Canceled Stripe purchases return to the plans on this page.
 
 There are no separate public product, pricing, guide or SEO pages, social preview metadata or canonical links. The HTML and frontend responses request no indexing, and `robots.txt` disallows crawling. Old `/pricing`, `/guide` and product links only redirect to sections of the purchase page so existing plugin links and bookmarks continue to work. Keygate attribution remains on the purchase page, management screens and API. Administration and account pages load on demand, so purchase visitors do not download the analytics charts.
 

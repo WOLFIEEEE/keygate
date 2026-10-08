@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { type PublicPlan, usePublicPlans, useStoreReady } from "@/hooks/use-store-catalog"
+import { approvedProPlan } from "@/lib/accessible-forms"
 
 // ISK and UGX retain Stripe's two-decimal API representation.
 const zeroDecimal = new Set([
@@ -49,7 +50,8 @@ export function PurchasePlans() {
   const availability = useStoreReady()
   const [period, setPeriod] = useState<Period>("all")
   const ready = availability.data === true
-  const plans = catalog.data || []
+  const publishedPlans = catalog.data || []
+  const plans = publishedPlans.length === 0 && !ready ? [approvedProPlan] : publishedPlans
   const periods = new Set(plans.map(periodFor))
   const selectedPeriod = period === "all" || periods.has(period) ? period : "all"
   const visiblePlans = selectedPeriod === "all" ? plans : plans.filter((plan) => periodFor(plan) === selectedPeriod)
@@ -58,7 +60,9 @@ export function PurchasePlans() {
     <section className="af-plans" id="store-plans" tabIndex={-1} aria-labelledby="plans-heading">
       <h2 id="plans-heading">Choose a Pro license</h2>
       <p className="af-plan-intro">
-        Every Pro plan includes the same features. Choose your site allowance and billing period.
+        {plans.length === 1
+          ? "All Pro features, with eligible updates and support for your paid period."
+          : "Every Pro plan includes the same features. Choose your site allowance and billing period."}
       </p>
       {periods.size > 1 && (
         <fieldset className="af-period-control">
@@ -110,28 +114,34 @@ export function PurchasePlans() {
       {!catalog.isPending && !catalog.isError && (
         <div className="af-plan-grid">
           {visiblePlans.map((plan) => (
-            <article className="af-plan-card" key={plan.id}>
-              <h3>{plan.name}</h3>
-              <p className="af-plan-price">
-                {priceLabel(plan)}
-                <span>
-                  {plan.billing_interval === "year"
-                    ? "/ year"
-                    : plan.billing_interval === "month"
-                      ? "/ month"
-                      : "one-time"}
-                </span>
-              </p>
-              <p className="af-plan-sites">
-                {plan.max_sites === 0
-                  ? "Unlimited sites"
-                  : `${plan.max_sites} ${plan.max_sites === 1 ? "site" : "sites"}`}
-              </p>
-              <p className="af-plan-description">
-                {plan.license_type === "perpetual"
-                  ? "One-time purchase. Updates for life."
-                  : "Updates for your paid period. Renews automatically; cancel from your account."}
-              </p>
+            <article className={`af-plan-card${plans.length === 1 ? " af-plan-card-single" : ""}`} key={plan.id}>
+              <div className="af-plan-info">
+                <h3>{plan.name}</h3>
+                <p className="af-plan-price">
+                  {priceLabel(plan)}
+                  <span>
+                    {plan.billing_interval === "year"
+                      ? "/ year"
+                      : plan.billing_interval === "month"
+                        ? "/ month"
+                        : "one-time"}
+                  </span>
+                </p>
+                <p className="af-plan-sites">
+                  {plan.max_sites === 0
+                    ? "Unlimited sites"
+                    : `${plan.max_sites} ${plan.max_sites === 1 ? "site" : "sites"}`}
+                </p>
+                <p className="af-plan-description">
+                  {plan.license_type === "perpetual"
+                    ? "One-time purchase. Updates for life."
+                    : plan.price !== null &&
+                        plan.currency &&
+                        (plan.billing_interval === "year" || plan.billing_interval === "month")
+                      ? `Renews at ${priceLabel(plan)} per ${plan.billing_interval}; cancel from your account.`
+                      : "Updates for your paid period. Renews automatically; cancel from your account."}
+                </p>
+              </div>
               {ready && plan.checkout_id && plan.price !== null && plan.currency ? (
                 <a className="af-button" href={`/pay/${encodeURIComponent(plan.checkout_id)}`}>
                   Choose {plan.name}
@@ -152,6 +162,11 @@ export function PurchasePlans() {
         Pro requires Free, WordPress 6.5+ and PHP 8.1+. Stripe confirms the final price and any applicable tax before
         payment. Already purchased? <Link to="/portal">Manage your license and billing</Link>.
       </p>
+      {plans.length === 1 && plans[0].max_sites === 1 && (
+        <p className="af-pricing-footnote">
+          Each additional site needs its own license. Manage all your licenses in one account.
+        </p>
+      )}
     </section>
   )
 }

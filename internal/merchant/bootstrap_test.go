@@ -129,7 +129,7 @@ func TestProvisionStoreAndSignedRelease(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	signer := service.NewReleaseSigningService(service.ReleaseSigningServiceConfig{Store: st, Storage: fs, AEAD: aead, Logger: logger, MaxSignSize: 50 * 1024 * 1024})
 	cfg := &config.Config{BaseURL: "https://license.example.test", StripeSecretKey: "sk_test_fixture", SMTPHost: "mail.example.test", SMTPFrom: "store@example.test", StorageLocalPath: t.TempDir(), ReleaseKeyEncryptionKey: strings.Repeat("1", 64)}
-	settings := &Settings{OwnerEmail: "owner@example.test", OwnerName: "Owner", SiteName: "Test store", ProductName: "Accessible Forms Pro", ProductSlug: "accessible-forms-pro", PublisherKey: "kg_live_" + strings.Repeat("x", 64), Plans: []Plan{{Slug: "personal", Name: "Personal", Sites: 1, Amount: 9900, Currency: "usd", Interval: "year"}, {Slug: "lifetime", Name: "Lifetime", Sites: 0, Amount: 19900, Currency: "usd", Interval: "lifetime"}}}
+	settings := &Settings{OwnerEmail: "owner@example.test", OwnerName: "Owner", SiteName: "Test store", ProductName: "Accessible Forms Pro", ProductSlug: "accessible-forms-pro", PublisherKey: "kg_live_" + strings.Repeat("x", 64), Plans: []Plan{{Slug: "single-site-annual", Name: "Single site", Sites: 1, Amount: 2900, Currency: "usd", Interval: "year"}, {Slug: "lifetime", Name: "Lifetime", Sites: 0, Amount: 19900, Currency: "usd", Interval: "lifetime"}}}
 	if err = Provision(ctx, st, signer, cfg, settings); err != nil {
 		t.Fatal(err)
 	}
@@ -170,6 +170,27 @@ func TestProvisionStoreAndSignedRelease(t *testing.T) {
 		t.Fatalf("unexpected pre-publication readiness %v", blocked)
 	}
 	prod, _ := st.FindProductBySlug(ctx, settings.ProductSlug)
+	provisionedPlans, _, err := st.ListPlans(ctx, prod.ID, "single-site-annual", store.Page{})
+	if err != nil || len(provisionedPlans) != 1 {
+		t.Fatalf("annual plan was not provisioned: %v", err)
+	}
+	annual := provisionedPlans[0]
+	if annual.MaxActivations != 1 || annual.BillingInterval != "year" || annual.LicenseType != "subscription" {
+		t.Fatalf("annual license terms differ: sites=%d interval=%s type=%s", annual.MaxActivations, annual.BillingInterval, annual.LicenseType)
+	}
+	var annualPrice map[string]any
+	for _, price := range prices {
+		if price["id"] == annual.StripePriceID {
+			annualPrice = price
+		}
+	}
+	if annualPrice == nil || annualPrice["unit_amount"] != int64(2900) || annualPrice["currency"] != "usd" {
+		t.Fatalf("annual Stripe price differs: %v", annualPrice)
+	}
+	recurring, ok := annualPrice["recurring"].(map[string]any)
+	if !ok || recurring["interval"] != "year" || recurring["interval_count"] != 1 {
+		t.Fatalf("annual Stripe renewal terms differ: %v", annualPrice)
+	}
 	releaseService := service.NewReleaseService(service.ReleaseServiceConfig{Store: st, Storage: fs, Signer: signer, Logger: logger})
 	release, err := releaseService.CreateRelease(ctx, service.CreateReleaseInput{ProductID: prod.ID, Version: "1.0.0"})
 	if err != nil {

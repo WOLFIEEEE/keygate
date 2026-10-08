@@ -15,7 +15,7 @@ async function accessible(page, label) {
   check(label, axe.violations.length === 0)
 }
 const plans = [
-  { id: "annual", name: "Personal", price: 9900, currency: "usd", max_sites: 1, license_type: "subscription", billing_interval: "year", checkout_id: "plannual" },
+  { id: "annual", name: "Single site", price: 2900, currency: "usd", max_sites: 1, license_type: "subscription", billing_interval: "year", checkout_id: "plannual" },
   { id: "monthly", name: "Team", price: 1499, currency: "usd", max_sites: 5, license_type: "subscription", billing_interval: "month", checkout_id: "plmonth1" },
   { id: "once", name: "Lifetime", price: 5000, currency: "jpy", max_sites: 0, license_type: "perpetual", billing_interval: "", checkout_id: "pllifet1" },
 ]
@@ -38,6 +38,9 @@ for (const [name, engine] of Object.entries({ chromium, firefox, webkit })) {
     const root = await page.goto(base + "/")
     await page.getByRole("heading", { level: 1, name: "Accessible Forms", exact: true }).waitFor()
     await page.getByRole("status").filter({ hasText: "purchasing is currently unavailable" }).waitFor()
+    await page.getByRole("heading", { name: "Single site", exact: true }).waitFor()
+    check(`${name}: approved offer is $29 per year for one site`, (await page.locator(".af-plan-price").innerText()).includes("$29.00") && (await page.locator(".af-plan-price").innerText()).includes("/ year") && (await page.locator(".af-plan-sites").innerText()) === "1 site")
+    check(`${name}: approved offer renews at the same price and stays disabled before setup`, (await page.locator(".af-plan-description").innerText()).includes("Renews at $29.00 per year") && await page.getByRole("button", { name: "Purchasing unavailable", exact: true }).isDisabled())
     check(`${name}: one product heading and visible attribution`, await page.locator("h1").count() === 1 && await page.getByRole("link", { name: "Powered by Keygate" }).isVisible())
     check(`${name}: header only links home and account`, await page.locator("header a").count() === 2 && await page.getByRole("link", { name: "My account", exact: true }).first().getAttribute("href") === "/portal")
     check(`${name}: no links to separate public pages`, await page.locator('a[href^="/products/"], a[href="/guide"], a[href="/pricing"]').count() === 0)
@@ -87,19 +90,30 @@ for (const [name, engine] of Object.entries({ chromium, firefox, webkit })) {
 
     let ready = false
     let catalogStatus = 200
-    let publicPlans = plans
+    let publicPlans = []
     await page.route("**/api/v1/products/accessible-forms-pro/plans", (route) => route.fulfill({ status: catalogStatus, json: catalogStatus === 200 ? { success: true, data: { plans: publicPlans } } : { success: false } }))
     await page.route("**/ready", (route) => route.fulfill({ status: ready ? 200 : 503, json: { ready } }))
+    ready = true
+    await page.goto(base + "/")
+    await page.getByText("No Pro plans are available at the moment. Please check again later.", { exact: true }).waitFor()
+    check(`${name}: readiness alone cannot authorize the preset offer`, await page.locator('a[href^="/pay/"]').count() === 0 && await page.locator(".af-plan-card").count() === 0)
+    publicPlans = [plans[0]]
+    await page.reload()
+    await page.getByRole("link", { name: "Choose Single site" }).waitFor()
+    check(`${name}: published annual offer uses Stripe catalogue terms`, await page.locator('a[href^="/pay/"]').count() === 1 && await page.getByRole("link", { name: "Choose Single site" }).getAttribute("href") === "/pay/plannual" && (await page.locator(".af-plan-price").innerText()).includes("$29.00"))
+    if (name === "chromium") await page.screenshot({ path: output + "/configured-single-plan-fixture.png", fullPage: true })
+    ready = false
+    publicPlans = plans
     await page.goto(base + "/")
     await page.getByRole("button", { name: "Purchasing unavailable", exact: true }).first().waitFor()
     check(`${name}: catalog alone cannot enable payment`, await page.locator('a[href^="/pay/"]').count() === 0 && await page.getByRole("button", { name: "Purchasing unavailable", exact: true }).count() === 3)
     ready = true
     await page.getByRole("button", { name: "Check availability", exact: true }).click()
-    await page.getByRole("link", { name: "Choose Personal" }).waitFor()
+    await page.getByRole("link", { name: "Choose Single site" }).waitFor()
     check(`${name}: availability retry enables configured plans`, await page.locator('a[href^="/pay/"]').count() === 3)
-    check(`${name}: decimal currencies and billing periods render`, (await page.locator("main").innerText()).includes("$99.00") && (await page.locator("main").innerText()).includes("$14.99"))
+    check(`${name}: decimal currencies and billing periods render`, (await page.locator("main").innerText()).includes("$29.00") && (await page.locator("main").innerText()).includes("$14.99"))
     check(`${name}: zero-decimal price and unlimited sites render`, (await page.locator("main").innerText()).includes("5,000") && (await page.locator("main").innerText()).includes("Unlimited sites"))
-    check(`${name}: checkout uses the public plan ID`, await page.getByRole("link", { name: "Choose Personal" }).getAttribute("href") === "/pay/plannual")
+    check(`${name}: checkout uses the public plan ID`, await page.getByRole("link", { name: "Choose Single site" }).getAttribute("href") === "/pay/plannual")
     await page.getByRole("button", { name: "Annual", exact: true }).click()
     check(`${name}: annual filter preserves Free`, await page.locator('a[href^="/pay/"]').count() === 1 && await page.getByRole("link", { name: "Download Free", exact: true }).isVisible())
     await page.getByRole("button", { name: "Monthly", exact: true }).click()
@@ -125,7 +139,7 @@ for (const [name, engine] of Object.entries({ chromium, firefox, webkit })) {
     publicPlans = plans
     catalogStatus = 200
     await page.getByRole("button", { name: "Try again", exact: true }).click()
-    await page.getByRole("link", { name: "Choose Personal" }).waitFor()
+    await page.getByRole("link", { name: "Choose Single site" }).waitFor()
     check(`${name}: catalog recovers on retry`, await page.getByRole("alert").count() === 0 && await page.locator('a[href^="/pay/"]').count() === 3)
 
     const installer = await context.request.get(base + "/downloads/accessible-forms-by-accessible-org-1.0.0.zip")
@@ -139,7 +153,7 @@ for (const [name, engine] of Object.entries({ chromium, firefox, webkit })) {
     await page.goto(base + "/portal")
     await page.getByRole("link", { name: "View product and plans", exact: true }).waitFor()
     check(`${name}: empty account returns to the purchase page`, await page.getByRole("link", { name: "View product and plans", exact: true }).getAttribute("href") === "/")
-    const license = { id: "fixture-license", email: user.email, license_key: "EXAMPLE-KEY-NOT-A-REAL-LICENSE", product_id: "fixture-product", plan_id: "fixture-plan", status: "active", valid_from: "2026-01-01T00:00:00Z", valid_until: "2099-01-01T00:00:00Z", activations: [], product: { id: "fixture-product", name: "Accessible Forms Pro", slug: "accessible-forms-pro", type: "desktop" }, plan: { id: "fixture-plan", name: "Personal", license_type: "subscription", max_activations: 1, active: true } }
+    const license = { id: "fixture-license", email: user.email, license_key: "EXAMPLE-KEY-NOT-A-REAL-LICENSE", product_id: "fixture-product", plan_id: "fixture-plan", status: "active", valid_from: "2026-01-01T00:00:00Z", valid_until: "2099-01-01T00:00:00Z", activations: [], product: { id: "fixture-product", name: "Accessible Forms Pro", slug: "accessible-forms-pro", type: "desktop" }, plan: { id: "fixture-plan", name: "Single site", license_type: "subscription", max_activations: 1, active: true } }
     await page.route("**/api/v1/portal/licenses/*/activations", (route) => route.fulfill({ json: { success: true, data: { activations: [], max: 1 } } }))
     await page.route("**/api/v1/portal/licenses", (route) => route.fulfill({ json: { success: true, data: { licenses: [license], renewals_enabled: true } } }))
     await page.reload()

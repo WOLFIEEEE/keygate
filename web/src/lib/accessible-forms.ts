@@ -1,5 +1,20 @@
 // Product details reflect the packaged WordPress plugins at source commit
 // 17e123d93a6b763061c3b082408a3fc772c90b4a. Only include released capabilities.
+import type { PublicPlan } from "@/hooks/use-store-catalog"
+
+export const approvedProPlan: PublicPlan = {
+  id: "single-site-annual-preset",
+  name: "Single site",
+  license_type: "subscription",
+  billing_interval: "year",
+  max_sites: 1,
+  price: 2900,
+  currency: "usd",
+  // An approved offer is displayed before configuration. Only the published
+  // catalogue can supply a real checkout ID and authorize a payment link.
+  checkout_id: "",
+}
+
 export const freeDownload = {
   version: "1.0.0",
   url: "/downloads/accessible-forms-by-accessible-org-1.0.0.zip",
