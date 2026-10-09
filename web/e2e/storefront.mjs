@@ -47,7 +47,7 @@ for (const [name, engine] of Object.entries({ chromium, firefox, webkit })) {
     check(`${name}: search indexing is disabled`, (await page.locator('meta[name="robots"]').getAttribute("content")) === "noindex, nofollow" && root.headers()["x-robots-tag"] === "noindex, nofollow")
     check(`${name}: no search/social metadata or canonical links`, await page.locator('meta[name="description"], meta[property^="og:"], meta[name^="twitter:"], link[rel="canonical"]').count() === 0)
     const robots = await context.request.get(base + "/robots.txt")
-    check(`${name}: robots excludes the utility`, robots.ok() && (await robots.text()).trim() === "User-agent: *\nDisallow: /")
+    check(`${name}: crawlers can read the noindex instruction`, robots.ok() && (await robots.text()).trim() === "User-agent: *\nAllow: /" && robots.headers()["x-robots-tag"] === "noindex, nofollow")
     check(`${name}: unconfigured checkout is closed and Free available`, await page.locator('a[href^="/pay/"]').count() === 0 && await page.getByRole("link", { name: "Download Free", exact: true }).isVisible())
     check(`${name}: optional details start collapsed`, await page.locator("#comparison").evaluate((n) => !n.open) && await page.locator("#installation").evaluate((n) => !n.open))
     await accessible(page, `${name}: compact page passes axe`)

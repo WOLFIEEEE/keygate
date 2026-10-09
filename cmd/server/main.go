@@ -643,6 +643,8 @@ func main() {
 
 	// Security headers & attribution (AGPL v3 Section 7b — see NOTICE)
 	r.Use(func(c *gin.Context) {
+		// Include APIs, downloads, redirects and errors in the no-index policy.
+		c.Header("X-Robots-Tag", "noindex, nofollow")
 		c.Header(branding.HeaderKey, branding.Project)
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("X-Content-Type-Options", "nosniff")
