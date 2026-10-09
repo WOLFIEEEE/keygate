@@ -365,6 +365,7 @@ const en = {
   "settings.language": "Language",
   "settings.languageDesc": "Interface language.",
   "settings.brandColor": "Brand Color",
+  "settings.brandColorHex": "Brand color hexadecimal value",
   "settings.brandColorDesc": "Primary color used throughout the interface. Leave empty for default.",
   "settings.logoUrl": "Custom Logo URL",
   "settings.logoUrlDesc": "URL to your logo (SVG recommended). Leave empty for default Keygate logo.",
@@ -487,6 +488,12 @@ const en = {
   // Pagination
   "pagination.of": "of",
   "pagination.rows": "Rows",
+  "pagination.rowsPerPage": "Rows per page",
+  "pagination.first": "First page",
+  "pagination.previous": "Previous page",
+  "pagination.next": "Next page",
+  "pagination.last": "Last page",
+  "pagination.page": "Page {page}",
 
   // Login
   "setup.title": "Set up Keygate",
@@ -524,7 +531,7 @@ const en = {
   // Checkout
   "checkout.verifying": "Verifying your payment...",
   "checkout.success": "Payment successful!",
-  "checkout.licenseSentTo": "Your license key has been sent to {email}",
+  "checkout.licenseSentTo": "Your license is ready. We’ll email your key and download link to {email}.",
   "checkout.licenseCreated": "Your license key has been created",
   "checkout.error": "Unable to verify payment. Your license will be delivered shortly via email.",
   "checkout.viewLicense": "View my license",

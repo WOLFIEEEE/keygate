@@ -1,0 +1,110 @@
+name: accessible-license
+services:
+  keygate:
+    image: accessible-keygate:local
+    build:
+      context: ..
+      args:
+        VERSION: accessible-licensing
+    env_file: .env
+    environment:
+      KEYGATE_UPDATE_REPO: WOLFIEEEE/keygate
+      PORT: "9000"
+      ENVIRONMENT: production
+      BASE_URL: https://${LICENSE_DOMAIN:?Set LICENSE_DOMAIN}
+      ADMIN_EMAILS: ${BOOTSTRAP_OWNER_EMAIL:?Set BOOTSTRAP_OWNER_EMAIL}
+      DATABASE_URL: postgres://keygate:${POSTGRES_PASSWORD:?Run start.sh}@postgres:5432/keygate?sslmode=disable
+      STORAGE_LOCAL_PATH: /data/artifacts
+      MAX_RELEASE_SIGN_SIZE_MB: "50"
+      BOOTSTRAP_PRODUCT_SLUG: accessible-forms-pro
+      BOOTSTRAP_PRODUCT_NAME: Accessible Forms Pro
+    volumes:
+      - artifacts:/data/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:9000/health]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    networks: [internal, public]
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: keygate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run start.sh}
+      POSTGRES_DB: keygate
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U keygate -d keygate]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks: [internal]
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      LICENSE_DOMAIN: ${LICENSE_DOMAIN:?Set LICENSE_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      keygate:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [public]
+
+  publisher:
+    image: python:3.13-alpine
+    profiles: [tools]
+    working_dir: /deployment
+    env_file: .env
+    environment:
+      KEYGATE_BASE_URL: https://${LICENSE_DOMAIN}
+    volumes:
+      - .:/deployment
+    entrypoint: [python, scripts/publish-release.py]
+    networks: [public]
+
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+    env_file: .env
+    environment:
+      PGHOST: postgres
+      PGUSER: keygate
+      PGDATABASE: keygate
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - artifacts:/artifacts:ro
+      - ./backups:/backups
+      - ./.env:/configuration/.env:ro
+      - ./secrets:/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [internal, public]
+
+networks:
+  internal:
+    internal: true
+  public:
+volumes:
+  postgres:
+  artifacts:
+  caddy-data:
+  caddy-config:

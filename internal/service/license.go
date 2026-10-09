@@ -232,10 +232,13 @@ type VerifyInput struct {
 }
 
 type VerifyResult struct {
-	Status     string     `json:"status"`
-	PlanID     string     `json:"plan_id"`
-	PlanName   string     `json:"plan_name"`
-	ValidUntil *time.Time `json:"valid_until,omitempty"`
+	Status      string     `json:"status"`
+	PlanID      string     `json:"plan_id"`
+	PlanName    string     `json:"plan_name"`
+	ActiveSites int        `json:"active_sites"`
+	MaxSites    int        `json:"max_sites"`
+	LicenseType string     `json:"license_type"`
+	ValidUntil  *time.Time `json:"valid_until,omitempty"`
 	// UpdatesUntil is the end of a perpetual license's maintenance
 	// period: releases published after it cannot be installed. Absent
 	// when the license has no separate limit.

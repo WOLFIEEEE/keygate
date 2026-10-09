@@ -864,11 +864,12 @@ type ReleaseArtifact struct {
 	// Empty for artifacts uploaded before it was recorded.
 	Filename string `bun:",notnull,default:''" json:"filename"`
 
-	FileKey     string `bun:",notnull,default:''" json:"file_key"`
-	FileSize    int64  `bun:",notnull,default:0" json:"file_size"`
-	SHA256      string `bun:",notnull,default:''" json:"sha256"`
-	Ed25519Sig  string `bun:",notnull,default:''" json:"ed25519_sig"`
-	ContentType string `bun:",notnull,nullzero,default:'application/octet-stream'" json:"content_type"`
+	FileKey     string             `bun:",notnull,default:''" json:"file_key"`
+	FileSize    int64              `bun:",notnull,default:0" json:"file_size"`
+	SHA256      string             `bun:",notnull,default:''" json:"sha256"`
+	Ed25519Sig  string             `bun:",notnull,default:''" json:"ed25519_sig"`
+	ContentType string             `bun:",notnull,nullzero,default:'application/octet-stream'" json:"content_type"`
+	WordPress   *WordPressMetadata `bun:"wordpress_metadata,type:jsonb" json:"wordpress_metadata,omitempty"`
 
 	// SigningKeyID identifies which signing key produced Ed25519Sig.
 	// Nullable when the artifact was published without signing.
@@ -884,6 +885,15 @@ type ReleaseArtifact struct {
 	UpdatedAt time.Time `bun:",nullzero,default:now()" json:"updated_at"`
 
 	Release *Release `bun:"rel:belongs-to,join:release_id=id" json:"-"`
+}
+
+// WordPressMetadata is read from the uploaded ZIP, never supplied by a client.
+type WordPressMetadata struct {
+	PluginFile  string `json:"plugin_file"`
+	Requires    string `json:"requires"`
+	RequiresPHP string `json:"requires_php"`
+	Tested      string `json:"tested"`
+	MinimumAPI  int    `json:"minimum_api"`
 }
 
 // IsUploaded reports whether the artifact has both a storage key and a

@@ -76,13 +76,15 @@ type Config struct {
 	// All fields are optional. The storage subsystem is enabled iff
 	// StorageBucket is non-empty and credentials are present. When disabled,
 	// release endpoints return 503 — license/billing functions are unaffected.
-	StorageEndpoint       string // e.g. https://<account>.r2.cloudflarestorage.com (empty = AWS S3)
-	StorageRegion         string // R2 uses "auto"; AWS S3 uses real region
-	StorageBucket         string
-	StorageAccessKey      string
-	StorageSecretKey      string
-	StoragePublicURL      string // optional CDN URL prefix for public reads (not used for license-gated downloads)
-	StorageForcePathStyle bool   // true for MinIO and some self-hosted S3 gateways
+	StorageEndpoint        string // e.g. https://<account>.r2.cloudflarestorage.com (empty = AWS S3)
+	StorageSigningEndpoint string // external S3 address for browser/WordPress presigned URLs
+	StorageLocalPath       string // private persistent directory; takes precedence over S3
+	StorageRegion          string // R2 uses "auto"; AWS S3 uses real region
+	StorageBucket          string
+	StorageAccessKey       string
+	StorageSecretKey       string
+	StoragePublicURL       string // optional CDN URL prefix for public reads (not used for license-gated downloads)
+	StorageForcePathStyle  bool   // true for MinIO and some self-hosted S3 gateways
 
 	// Presigned URL TTLs.
 	StorageUploadTTL   string // default "1h"
@@ -160,6 +162,8 @@ func Load() (*Config, error) {
 	}
 
 	cfg.StorageEndpoint = os.Getenv("STORAGE_ENDPOINT")
+	cfg.StorageSigningEndpoint = os.Getenv("STORAGE_SIGNING_ENDPOINT")
+	cfg.StorageLocalPath = os.Getenv("STORAGE_LOCAL_PATH")
 	cfg.StorageRegion = envOr("STORAGE_REGION", "auto")
 	cfg.StorageBucket = os.Getenv("STORAGE_BUCKET")
 	cfg.StorageAccessKey = os.Getenv("STORAGE_ACCESS_KEY")
@@ -247,6 +251,9 @@ func deriveLivemode(envVal string, envSet bool, secretKey string) bool {
 // has the minimum required configuration. Endpoint/region/path-style are
 // optional — only bucket+credentials are mandatory.
 func (c *Config) IsStorageEnabled() bool {
+	if c.StorageLocalPath != "" {
+		return c.IsMasterEncryptionKeyConfigured()
+	}
 	return c.StorageBucket != "" &&
 		c.StorageAccessKey != "" &&
 		c.StorageSecretKey != ""

@@ -47,7 +47,9 @@ type StripeHandler struct {
 	// Every inbound webhook event whose Livemode differs is rejected
 	// with 400 — guards against cross-environment delivery (test
 	// secret leaking + replay into prod, or vice versa).
-	Livemode bool
+	Livemode      bool
+	CheckoutReady func(context.Context) bool
+	AutomaticTax  bool
 
 	// pendingAfter is where the last SyncPendingCheckouts round
 	// stopped when it hit its per-round cap; nil starts from the oldest
@@ -112,6 +114,10 @@ func (h *StripeHandler) isSameOrigin(raw string) bool {
 }
 
 func (h *StripeHandler) CreateCheckoutSession(c *gin.Context) {
+	if h.CheckoutReady != nil && !h.CheckoutReady(c.Request.Context()) {
+		response.Err(c, 503, "STORE_NOT_READY", "checkout is not available until store setup is complete")
+		return
+	}
 	var req struct {
 		PriceID    string `json:"price_id" binding:"required"`
 		Email      string `json:"email"`
@@ -136,7 +142,7 @@ func (h *StripeHandler) CreateCheckoutSession(c *gin.Context) {
 	if req.SuccessURL != "" && h.isSameOrigin(req.SuccessURL) {
 		success = req.SuccessURL
 	}
-	cancel := h.BaseURL + "/pricing"
+	cancel := h.BaseURL + "/#store-plans"
 	if req.CancelURL != "" && h.isSameOrigin(req.CancelURL) {
 		cancel = req.CancelURL
 	}
@@ -155,6 +161,7 @@ func (h *StripeHandler) CreateCheckoutSession(c *gin.Context) {
 		CancelURL:           stripe.String(cancel),
 		AllowPromotionCodes: stripe.Bool(true),
 	}
+	h.applyAutomaticTax(params)
 	params.Metadata = map[string]string{
 		"plan_id":       plan.ID,
 		"product_id":    plan.ProductID,
@@ -176,6 +183,10 @@ func (h *StripeHandler) CreateCheckoutSession(c *gin.Context) {
 // CheckoutByPlan handles GET /pay/:checkout_id — looks up plan by checkout_id,
 // creates a Stripe Checkout Session, and redirects to Stripe.
 func (h *StripeHandler) CheckoutByPlan(c *gin.Context) {
+	if h.CheckoutReady != nil && !h.CheckoutReady(c.Request.Context()) {
+		c.String(http.StatusServiceUnavailable, "store setup is not yet complete")
+		return
+	}
 	checkoutID := c.Param("checkout_id")
 	if len(checkoutID) != 8 {
 		c.String(http.StatusBadRequest, "invalid checkout id")
@@ -220,9 +231,10 @@ func (h *StripeHandler) CheckoutByPlan(c *gin.Context) {
 			{Price: stripe.String(plan.StripePriceID), Quantity: stripe.Int64(1)},
 		},
 		SuccessURL:          stripe.String(h.BaseURL + "/checkout/success?session_id={CHECKOUT_SESSION_ID}"),
-		CancelURL:           stripe.String(h.BaseURL + "/pricing"),
+		CancelURL:           stripe.String(h.BaseURL + "/#store-plans"),
 		AllowPromotionCodes: stripe.Bool(true),
 	}
+	h.applyAutomaticTax(params)
 	params.Metadata = map[string]string{
 		"plan_id":       plan.ID,
 		"product_id":    plan.ProductID,
@@ -868,7 +880,8 @@ func (h *StripeHandler) fulfillCheckout(ctx context.Context, email, customerID, 
 	// Ensure user record exists so they appear in Customers
 	_ = h.Store.UpsertUser(ctx, &model.User{Email: email})
 
-	err = h.Store.CreateLicenseWithSubscription(ctx, lic, plan)
+	confirmation := h.checkoutConfirmation(ctx, email, lic, plan)
+	err = h.Store.CreateLicenseWithSubscriptionAndEmail(ctx, lic, plan, confirmation)
 	if errors.Is(err, store.ErrPlanChanged) {
 		// The plan was retyped between resolving it and this write.
 		// Everything about the license follows from that type, so the
@@ -943,6 +956,24 @@ func (h *StripeHandler) fulfillCheckout(ctx context.Context, email, customerID, 
 		_ = h.Store.UpdateLicenseUser(ctx, lic.ID, u.ID)
 	}
 
+	h.Store.Audit(ctx, &model.AuditLog{
+		Entity: "license", EntityID: lic.ID, Action: "created",
+		ActorType: source,
+		Changes:   map[string]any{"provider": "stripe", "email": email, "plan": plan.Name},
+	})
+
+	if h.WebhookSvc != nil {
+		h.WebhookSvc.Dispatch(ctx, lic.ProductID, "license.created", map[string]any{
+			"license_id": lic.ID, "email": lic.Email, "plan_id": lic.PlanID,
+		})
+	}
+
+	slog.Info("license created", "email", email, "plan", plan.Name, "source", source)
+	return true, nil
+}
+
+// checkoutConfirmation renders the delivery mail before the purchase transaction.
+func (h *StripeHandler) checkoutConfirmation(ctx context.Context, email string, lic *model.License, plan *model.Plan) *store.QueuedEmail {
 	// One product read for both the name and the download page.
 	productName, downloadURL := "Your Software", ""
 	if p, err := h.Store.FindProductByID(ctx, plan.ProductID); err == nil {
@@ -953,6 +984,7 @@ func (h *StripeHandler) fulfillCheckout(ctx context.Context, email, customerID, 
 	} else {
 		slog.Warn("product name not found, using fallback", "product_id", plan.ProductID)
 	}
+	var confirmation *store.QueuedEmail
 	if email != "" {
 		// Use DecryptLicenseKey for forward compatibility — Phase C will
 		// drop the plaintext column and direct .LicenseKey reads will be empty.
@@ -973,23 +1005,10 @@ func (h *StripeHandler) fulfillCheckout(ctx context.Context, email, customerID, 
 <p style="color: #666; font-size: 14px;">Keep this key safe. You'll need it to activate your software.</p>
 </body></html>`, html.EscapeString(productName), html.EscapeString(plan.Name), html.EscapeString(displayKey))
 		}
-		_ = h.Store.EnqueueEmail(ctx, email, subject, body)
+		confirmation = &store.QueuedEmail{ToAddr: email, Subject: subject, Body: body}
 	}
 
-	h.Store.Audit(ctx, &model.AuditLog{
-		Entity: "license", EntityID: lic.ID, Action: "created",
-		ActorType: source,
-		Changes:   map[string]any{"provider": "stripe", "email": email, "plan": plan.Name},
-	})
-
-	if h.WebhookSvc != nil {
-		h.WebhookSvc.Dispatch(ctx, lic.ProductID, "license.created", map[string]any{
-			"license_id": lic.ID, "email": lic.Email, "plan_id": lic.PlanID,
-		})
-	}
-
-	slog.Info("license created", "email", email, "plan", plan.Name, "source", source)
-	return true, nil
+	return confirmation
 }
 
 // VerifyCheckoutSession handles GET /api/v1/checkout/verify?session_id=xxx
@@ -2344,6 +2363,7 @@ func (h *StripeHandler) RenewUpdates(c *gin.Context) {
 	} else {
 		params.CustomerEmail = stripe.String(lic.Email)
 	}
+	h.applyAutomaticTax(params)
 	params.Metadata = map[string]string{
 		metaKind:        kindRenewal,
 		metaLicenseID:   lic.ID,
@@ -2757,6 +2777,13 @@ func (h *StripeHandler) CreatePortalSession(c *gin.Context) {
 	params := &stripe.BillingPortalSessionParams{
 		Customer:  stripe.String(lic.StripeCustomerID),
 		ReturnURL: stripe.String(returnURL),
+	}
+	if !h.isSameOrigin(returnURL) {
+		response.BadRequest(c, "return_url must be on this store")
+		return
+	}
+	if configuration, _ := h.Store.GetSetting(c, "stripe_portal_configuration_id"); configuration != "" {
+		params.Configuration = stripe.String(configuration)
 	}
 	s, err := portalsession.New(params)
 	if err != nil {

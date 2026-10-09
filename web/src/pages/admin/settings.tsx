@@ -296,8 +296,9 @@ export default function SettingsPage() {
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>{t("settings.siteName")}</Label>
+                  <Label htmlFor="settings-site-name">{t("settings.siteName")}</Label>
                   <Input
+                    id="settings-site-name"
                     value={form.site_name || ""}
                     onChange={(e) => set("site_name", e.target.value)}
                     placeholder="Keygate"
@@ -305,9 +306,9 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted-foreground">{t("settings.siteNameDesc")}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("settings.timezone")}</Label>
+                  <Label htmlFor="settings-timezone">{t("settings.timezone")}</Label>
                   <Select value={form.timezone || "UTC"} onValueChange={(v) => set("timezone", v)}>
-                    <SelectTrigger>
+                    <SelectTrigger id="settings-timezone">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -322,9 +323,9 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted-foreground">{t("settings.timezoneDesc")}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("settings.language")}</Label>
+                  <Label htmlFor="settings-language">{t("settings.language")}</Label>
                   <Select value={locale} onValueChange={(v) => setLocale(v as "en" | "zh")}>
-                    <SelectTrigger>
+                    <SelectTrigger id="settings-language">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -335,15 +336,17 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted-foreground">{t("settings.languageDesc")}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("settings.brandColor")}</Label>
+                  <Label htmlFor="settings-brand-color">{t("settings.brandColor")}</Label>
                   <div className="flex items-center gap-3">
                     <input
                       type="color"
+                      id="settings-brand-color"
                       value={form.brand_color || "#7c3aed"}
                       onChange={(e) => set("brand_color", e.target.value)}
                       className="h-9 w-14 rounded border cursor-pointer"
                     />
                     <Input
+                      aria-label={t("settings.brandColorHex")}
                       value={form.brand_color || ""}
                       onChange={(e) => set("brand_color", e.target.value)}
                       placeholder="#7c3aed"
@@ -358,10 +361,11 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted-foreground">{t("settings.brandColorDesc")}</p>
                 </div>
                 <div className="space-y-2 sm:col-span-2">
-                  <Label>{t("settings.logoUrl")}</Label>
+                  <Label htmlFor="settings-logo">{t("settings.logoUrl")}</Label>
                   <div className="flex items-center gap-3">
                     {form.logo_url && <img src={form.logo_url} alt="Custom logo" className="h-8 w-8 rounded border" />}
                     <Input
+                      id="settings-logo"
                       value={form.logo_url || ""}
                       onChange={(e) => set("logo_url", e.target.value)}
                       placeholder="https://example.com/logo.svg"

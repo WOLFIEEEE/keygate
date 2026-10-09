@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Check, Copy, Key, Trash2 } from "lucide-react"
 import { useState } from "react"
+import { Link } from "react-router-dom"
 import { showToast } from "@/components/toast"
 import {
   AlertDialog,
@@ -22,6 +23,7 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from "@/hooks/use-auth"
 import { type TranslationKeys, useI18n } from "@/i18n"
+import { freeDownload } from "@/lib/accessible-forms"
 import {
   type Activation,
   type Entitlement,
@@ -70,6 +72,9 @@ export default function PortalLicensesPage() {
             <Key className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-lg font-medium">{t("portal.noLicenses")}</p>
             <p className="text-muted-foreground mt-1">{t("portal.noLicensesDesc")}</p>
+            <Button asChild className="mt-5">
+              <Link to="/">View product and plans</Link>
+            </Button>
           </CardContent>
         </Card>
       ) : (
@@ -94,6 +99,20 @@ function LicenseCard({ license: lic, renewalsEnabled }: { license: PortalLicense
   const [showInvoices, setShowInvoices] = useState(false)
   const [showChangePlan, setShowChangePlan] = useState(false)
   const [showCancel, setShowCancel] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState("")
+  const downloadInstaller = async () => {
+    setDownloading(true)
+    setDownloadError("")
+    try {
+      const download = await portal.downloadWordPress(lic.id)
+      window.location.assign(download.url)
+    } catch {
+      setDownloadError("The installer could not be downloaded. Check your license status or try again shortly.")
+    } finally {
+      setDownloading(false)
+    }
+  }
   const productType = lic.product?.type || "perpetual"
   const showUsage = productType === "saas" || productType === "hybrid"
   // Seats UI shows for any plan that *could* have more than one seat.
@@ -169,12 +188,45 @@ function LicenseCard({ license: lic, renewalsEnabled }: { license: PortalLicense
         <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2">
           <Key className="h-4 w-4 text-muted-foreground shrink-0" />
           <code className="text-sm flex-1 truncate">{lic.license_key}</code>
-          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={copyKey}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            onClick={copyKey}
+            aria-label={copied ? "License key copied" : "Copy license key"}
+          >
             {copied ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
           </Button>
         </div>
 
         {/* Overview stats */}
+        {isOwner && lic.product?.slug === "accessible-forms-pro" && (
+          <div className="space-y-2">
+            <Button onClick={downloadInstaller} disabled={downloading}>
+              {downloading ? "Preparing download…" : "Download Accessible Forms Pro"}
+            </Button>
+            <p className="text-sm text-muted-foreground">
+              Install the Free plugin first, then upload this Pro ZIP and connect your license in Accessible Forms → Pro
+              license.
+            </p>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <a href={freeDownload.url} download className="underline text-primary min-h-11 inline-flex items-center">
+                Download the Free plugin
+              </a>
+              <Link to="/#installation" className="underline text-primary min-h-11 inline-flex items-center">
+                Installation instructions
+              </Link>
+              <Link to="/" className="underline text-primary min-h-11 inline-flex items-center">
+                Product and plans
+              </Link>
+            </div>
+            {downloadError && (
+              <p role="alert" className="text-sm text-destructive">
+                {downloadError}
+              </p>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
             <p className="text-muted-foreground">{t("portal.validFrom")}</p>

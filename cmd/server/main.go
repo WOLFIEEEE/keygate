@@ -28,6 +28,7 @@ import (
 	"github.com/tabloy/keygate/internal/crypto"
 	"github.com/tabloy/keygate/internal/handler"
 	"github.com/tabloy/keygate/internal/license"
+	"github.com/tabloy/keygate/internal/merchant"
 	"github.com/tabloy/keygate/internal/middleware"
 	"github.com/tabloy/keygate/internal/model"
 	"github.com/tabloy/keygate/internal/payment"
@@ -42,7 +43,7 @@ import (
 // reach a log line. An updater sends a signed token this way when it
 // cannot set a header; the license key itself is refused in the URL,
 // but a client that tries still must not have it logged.
-var credentialQueryParams = []string{"license_key", "license_token"}
+var credentialQueryParams = []string{"license_key", "license_token", "signature"}
 
 // credentialPathPrefixes name the routes that carry a credential as a
 // path segment rather than a parameter. The customer portal addresses
@@ -282,14 +283,31 @@ func main() {
 	// stub so the server still boots. Release endpoints will return 503 when
 	// they reach storage; license/billing functions are unaffected.
 	var releaseStorage storage.Storage = storage.Disabled{}
-	if cfg.IsStorageEnabled() {
+	var filesystemStorage *storage.Filesystem
+	if cfg.StorageLocalPath != "" {
+		master, err := hex.DecodeString(cfg.ReleaseKeyEncryptionKey)
+		if err != nil {
+			log.Fatal("filesystem storage requires a valid master encryption key")
+		}
+		secret, err := crypto.DeriveSubkey(master, "filesystem-artifact-url")
+		if err != nil {
+			log.Fatalf("filesystem storage: %v", err)
+		}
+		filesystemStorage, err = storage.NewFilesystem(cfg.StorageLocalPath, cfg.BaseURL, secret, cfg.MaxReleaseSignSize)
+		if err != nil {
+			log.Fatalf("filesystem storage: %v", err)
+		}
+		releaseStorage = filesystemStorage
+		logger.Info("storage: private filesystem initialized")
+	} else if cfg.IsStorageEnabled() {
 		s3, err := storage.NewS3(context.Background(), storage.S3Config{
-			Endpoint:       cfg.StorageEndpoint,
-			Region:         cfg.StorageRegion,
-			Bucket:         cfg.StorageBucket,
-			AccessKey:      cfg.StorageAccessKey,
-			SecretKey:      cfg.StorageSecretKey,
-			ForcePathStyle: cfg.StorageForcePathStyle,
+			Endpoint:        cfg.StorageEndpoint,
+			SigningEndpoint: cfg.StorageSigningEndpoint,
+			Region:          cfg.StorageRegion,
+			Bucket:          cfg.StorageBucket,
+			AccessKey:       cfg.StorageAccessKey,
+			SecretKey:       cfg.StorageSecretKey,
+			ForcePathStyle:  cfg.StorageForcePathStyle,
 		})
 		if err != nil {
 			logger.Error("storage: init failed; release endpoints will be disabled", "error", err)
@@ -402,6 +420,15 @@ func main() {
 	})
 
 	licenseH := handler.NewLicenseHandler(licenseSvc)
+	wordpressSvc := service.NewWordPressService(db, licenseSvc, releaseSvc)
+	wordpressSvc.BaseURL = cfg.BaseURL
+	wordpressSvc.DownloadOrigins = []string{}
+	if probe, err := releaseStorage.PresignedGet(context.Background(), ".config-origin", "", time.Minute); err == nil {
+		if parsed, err := url.Parse(probe); err == nil {
+			wordpressSvc.DownloadOrigins = append(wordpressSvc.DownloadOrigins, parsed.Scheme+"://"+parsed.Host)
+		}
+	}
+	wordpressH := handler.NewWordPressHandler(wordpressSvc)
 	authH := &handler.AuthHandler{Store: db, Config: cfg, Email: emailSvc}
 	stripeH := &payment.StripeHandler{
 		Store:         db,
@@ -410,6 +437,7 @@ func main() {
 		Email:         emailSvc,
 		WebhookSvc:    webhookSvc,
 		Livemode:      cfg.StripeLivemode,
+		AutomaticTax:  strings.EqualFold(os.Getenv("STRIPE_AUTOMATIC_TAX"), "true"),
 	}
 	// Initialize thread-safe webhook secret with config value
 	stripeH.SetWebhookSecret(cfg.StripeWebhookSecret)
@@ -453,6 +481,13 @@ func main() {
 	floatingH := handler.NewFloatingHandler(floatingSvc)
 	webhookAdminH := handler.NewWebhookAdminHandler(db, webhookSvc)
 	systemH := handler.NewSystemHandler(db)
+	if repo := os.Getenv("KEYGATE_UPDATE_REPO"); repo != "" {
+		pieces := strings.Split(repo, "/")
+		if len(pieces) != 2 || pieces[0] == "" || pieces[1] == "" {
+			log.Fatal("KEYGATE_UPDATE_REPO must be owner/repository")
+		}
+		systemH.RepoOwner, systemH.RepoName = pieces[0], pieces[1]
+	}
 	releaseAdminH := handler.NewReleaseAdminHandler(releaseSvc, db)
 	releasePublicH := handler.NewReleasePublicHandler(handler.ReleasePublicConfig{
 		Service:     releaseSvc,
@@ -475,6 +510,21 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	merchantSettings, err := merchant.FromEnvironment()
+	if err != nil {
+		log.Fatalf("store configuration: %v", err)
+	}
+	provisionCtx, provisionCancel := context.WithTimeout(ctx, 90*time.Second)
+	if err := merchant.Provision(provisionCtx, db, releaseSigner, cfg, merchantSettings); err != nil {
+		provisionCancel()
+		log.Fatalf("store setup: %v", err)
+	}
+	provisionCancel()
+	if merchantSettings != nil {
+		stripeH.CheckoutReady = func(checkCtx context.Context) bool {
+			return len(merchant.Readiness(checkCtx, db, cfg, merchantSettings, stripeH.GetWebhookSecret(), releaseStorage, emailSvc)) == 0
+		}
+	}
 
 	// Auto-setup Stripe webhook endpoint if:
 	// - Stripe secret key is configured
@@ -485,6 +535,8 @@ func main() {
 	}
 
 	go webhookSvc.StartRetryLoop(ctx, webhookRetryInterval)
+
+	go service.NewDatabaseHealthChecker(db.CheckDatabaseHealth, logger).Start(ctx)
 
 	go floatingSvc.StartCleanupLoop(ctx, time.Minute)
 
@@ -591,6 +643,8 @@ func main() {
 
 	// Security headers & attribution (AGPL v3 Section 7b — see NOTICE)
 	r.Use(func(c *gin.Context) {
+		// Include APIs, downloads, redirects and errors in the no-index policy.
+		c.Header("X-Robots-Tag", "noindex, nofollow")
 		c.Header(branding.HeaderKey, branding.Project)
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("X-Content-Type-Options", "nosniff")
@@ -675,6 +729,18 @@ func main() {
 	r.StaticFile("/docs/openapi.yaml", "docs/openapi.yaml")
 
 	v1 := r.Group("/api/v1")
+	if filesystemStorage != nil {
+		r.Any(storage.FilesystemRoute, gin.WrapH(filesystemStorage))
+	}
+	r.GET("/ready", func(c *gin.Context) {
+		issues := merchant.Readiness(c.Request.Context(), db, cfg, merchantSettings, stripeH.GetWebhookSecret(), releaseStorage, emailSvc)
+		code := http.StatusOK
+		if len(issues) > 0 {
+			code = http.StatusServiceUnavailable
+		}
+		c.Header("Cache-Control", "no-store")
+		c.JSON(code, gin.H{"ready": len(issues) == 0, "checks_pending": issues})
+	})
 
 	v1.GET("/version", systemH.GetVersion)
 
@@ -762,6 +828,20 @@ func main() {
 		lic.POST("/floating/heartbeat", floatingH.Heartbeat)
 		lic.POST("/download", releasePublicH.Download)
 	}
+
+	// WordPress clients send their home URL in the body, so activations are
+	// scoped to both the product and the installation. Reuse the license
+	// rate-limit bucket and brute-force guard instead of adding a second budget.
+	wp := v1.Group("/wordpress/:product_slug",
+		middleware.LicenseBruteForceGuard(bf),
+		middleware.RateLimitByIPScoped("license", licRateLimit, time.Minute))
+	wp.POST("/activate", wordpressH.Activate)
+	wp.POST("/verify", wordpressH.Verify)
+	wp.POST("/deactivate", wordpressH.Deactivate)
+	wp.POST("/update", wordpressH.Update)
+	wp.POST("/download", wordpressH.Download)
+	v1.GET("/wordpress/:product_slug/info", middleware.RateLimitByIPScoped("wordpress_info", 60, time.Minute), wordpressH.Info)
+	v1.GET("/wordpress/:product_slug/config", middleware.RateLimitByIPScoped("wordpress_info", 60, time.Minute), wordpressH.Config)
 
 	// Public invite acceptance — the token is proof of email
 	// ownership (we mailed it to the invitee), so no session auth
@@ -853,6 +933,7 @@ func main() {
 	portal := v1.Group("/portal", middleware.SessionAuth(cfg.JWTSecret, db.FindUserIsAdmin))
 	{
 		portal.GET("/me", authH.Me)
+		portal.POST("/downloads/wordpress", middleware.RateLimitByIPScoped("portal_download", 30, time.Minute), (&handler.PortalDownloadsHandler{Store: db, Releases: releaseSvc}).Download)
 		portal.GET("/licenses", func(c *gin.Context) {
 			emailVal, _ := c.Get("email")
 			emailStr, ok := emailVal.(string)
@@ -1349,7 +1430,7 @@ var frontendAssetExts = map[string]bool{
 // route of the app's own ("/licenses/1.0", say) has an extension too,
 // so the list is explicit rather than "anything with a dot".
 func isFrontendAsset(clean string) bool {
-	return strings.HasPrefix(clean, "/assets/") || frontendAssetExts[strings.ToLower(filepath.Ext(clean))]
+	return strings.HasPrefix(clean, "/assets/") || strings.HasPrefix(clean, "/downloads/") || frontendAssetExts[strings.ToLower(filepath.Ext(clean))]
 }
 
 // newLogger builds the application logger and makes it the one that
@@ -1394,9 +1475,27 @@ func serveFrontend(r *gin.Engine) {
 		path := c.Request.URL.Path
 
 		// Let backend routes pass through.
-		if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/pay/") || path == "/health" || path == "/metrics" || path == "/docs" || strings.HasPrefix(path, "/docs/") {
+		if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/pay/") || path == "/health" || path == "/ready" || path == "/metrics" || path == "/docs" || strings.HasPrefix(path, "/docs/") {
 			c.Next()
 			return
+		}
+
+		c.Header("X-Robots-Tag", "noindex, nofollow")
+		// Old plugin links and bookmarks return to the single purchase page.
+		// These aliases do not serve separate product, pricing or guide pages.
+		if c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead {
+			legacy := map[string]string{
+				"/pricing":                       "/#store-plans",
+				"/guide":                         "/#installation",
+				"/products/accessible-forms":     "/",
+				"/products/accessible-forms-pro": "/#comparison",
+			}
+			if target, ok := legacy[strings.TrimRight(path, "/")]; ok {
+				c.Header("Cache-Control", "no-cache")
+				c.Redirect(http.StatusFound, target)
+				c.Abort()
+				return
+			}
 		}
 
 		// Try to serve a static file using path.Clean to prevent traversal.
@@ -1409,6 +1508,9 @@ func serveFrontend(r *gin.Engine) {
 					// Every name under /assets carries a content hash,
 					// so one URL never changes what it holds.
 					c.Header("Cache-Control", "public, max-age=31536000, immutable")
+				}
+				if strings.HasPrefix(clean, "/downloads/") && strings.HasSuffix(clean, ".zip") {
+					c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(clean)+"\"")
 				}
 				c.File(filePath)
 				c.Abort()

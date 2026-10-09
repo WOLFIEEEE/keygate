@@ -53,7 +53,7 @@ fmt: ## Format all code
 .PHONY: lint
 lint: ## Lint all code
 	$(GO) vet ./...
-	cd web && $(BUN) run lint 2>/dev/null || true
+	cd web && $(BUN) run lint
 
 .PHONY: test
 test: ## Run all tests
@@ -99,6 +99,20 @@ docker-down: ## Stop Docker Compose
 .PHONY: docker-logs
 docker-logs: ## Tail Docker Compose logs
 	docker compose logs -f keygate
+
+.PHONY: local-up local-down local-logs local-test
+local-up: ## Build this fork and start at http://localhost:9100
+	docker compose -f compose.dev.yaml up -d --build keygate
+
+local-down: ## Stop local services, retaining the development database
+	docker compose -f compose.dev.yaml --profile test down
+
+local-logs: ## Show local server logs (includes development login codes)
+	docker compose -f compose.dev.yaml logs -f keygate
+
+local-test: ## Run all Go tests against a fresh disposable PostgreSQL database
+	docker compose -f compose.dev.yaml --profile test rm -sf postgres-test
+	docker compose -f compose.dev.yaml --profile test run --rm test
 
 # ─── Clean ────────────────────────────────────────
 

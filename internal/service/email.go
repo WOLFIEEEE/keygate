@@ -123,7 +123,12 @@ func (s *EmailService) IsConfigured() bool {
 // log — must use this and fail closed on err, so a DB blip or a decrypt
 // failure never leaks a login code to the log.
 func (s *EmailService) Configured() (bool, error) {
-	cfg, err := s.resolve(context.Background())
+	return s.ConfiguredContext(context.Background())
+}
+
+// ConfiguredContext checks the active provider using the caller's deadline.
+func (s *EmailService) ConfiguredContext(ctx context.Context) (bool, error) {
+	cfg, err := s.resolve(ctx)
 	if err != nil {
 		return false, err
 	}

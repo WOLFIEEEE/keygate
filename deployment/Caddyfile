@@ -1,0 +1,8 @@
+{$LICENSE_DOMAIN} {
+    # The backend enforces upload lengths and authenticates every artifact URL.
+    request_body {
+        max_size 51MB
+    }
+    reverse_proxy keygate:9000
+    # Signed download URLs contain temporary bearer signatures; avoid logging them.
+}

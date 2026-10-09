@@ -140,12 +140,15 @@ type DownloadInput struct {
 
 // DownloadResult is what's returned to the client on successful authz.
 type DownloadResult struct {
-	URL       string    `json:"url"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Version   string    `json:"version"`
-	Platform  string    `json:"platform"`
-	SHA256    string    `json:"sha256"`
-	FileSize  int64     `json:"file_size"`
+	URL          string                   `json:"url"`
+	ExpiresAt    time.Time                `json:"expires_at"`
+	Version      string                   `json:"version"`
+	Platform     string                   `json:"platform"`
+	SHA256       string                   `json:"sha256"`
+	FileSize     int64                    `json:"file_size"`
+	Signature    string                   `json:"signature,omitempty"`
+	SigningKeyID string                   `json:"signing_key_id,omitempty"`
+	WordPress    *model.WordPressMetadata `json:"wordpress_metadata,omitempty"`
 }
 
 // ─── Sentinel errors ───
@@ -179,6 +182,7 @@ var allowedPlatforms = []string{
 	"linux-arm64",
 	"linux-x64",
 	"linux-armhf",
+	WordPressPlatform,
 }
 
 // AllowedPlatforms returns the canonical list of platform identifiers
@@ -414,6 +418,17 @@ func (s *ReleaseService) FinalizeArtifact(ctx context.Context, in FinalizeArtifa
 		return nil, apperr.New(409, "SHA256_MISMATCH",
 			fmt.Sprintf("uploaded bytes hash to %s; client expected %s", computed, in.ExpectedSHA256))
 	}
+	var wordpress *model.WordPressMetadata
+	if a.Platform == WordPressPlatform {
+		rel, err := s.store.FindReleaseByID(ctx, a.ReleaseID)
+		if err != nil {
+			return nil, apperr.Internal(err)
+		}
+		wordpress, err = s.inspectWordPressArtifact(ctx, a.FileKey, rel, computed)
+		if err != nil {
+			return nil, apperr.New(400, "INVALID_WORDPRESS_PACKAGE", err.Error())
+		}
+	}
 
 	contentType := info.ContentType
 	if contentType == "" {
@@ -425,7 +440,7 @@ func (s *ReleaseService) FinalizeArtifact(ctx context.Context, in FinalizeArtifa
 		contentType = "application/octet-stream"
 	}
 
-	if err := s.store.UpdateArtifactFile(ctx, a.ID, a.FileKey, info.Size, computed, contentType); err != nil {
+	if err := s.store.UpdateArtifactFile(ctx, a.ID, a.FileKey, info.Size, computed, contentType, wordpress); err != nil {
 		switch {
 		case errors.Is(err, store.ErrReleaseNotPublishable):
 			return nil, apperr.New(409, "RELEASE_NOT_DRAFT", "artifact's release is no longer draft")
@@ -839,12 +854,15 @@ func (s *ReleaseService) GenerateDownload(ctx context.Context, in DownloadInput)
 	}
 
 	return &DownloadResult{
-		URL:       url,
-		ExpiresAt: time.Now().Add(s.downloadTTL),
-		Version:   rel.Version,
-		Platform:  artifact.Platform,
-		SHA256:    artifact.SHA256,
-		FileSize:  artifact.FileSize,
+		URL:          url,
+		ExpiresAt:    time.Now().Add(s.downloadTTL),
+		Version:      rel.Version,
+		Platform:     artifact.Platform,
+		SHA256:       artifact.SHA256,
+		FileSize:     artifact.FileSize,
+		Signature:    artifact.Ed25519Sig,
+		SigningKeyID: artifact.SigningKeyID,
+		WordPress:    artifact.WordPress,
 	}, nil
 }
 

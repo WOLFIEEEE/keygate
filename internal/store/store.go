@@ -532,6 +532,13 @@ func (s *Store) CreateLicense(ctx context.Context, l *model.License) error {
 // CreateLicenseWithSubscription creates a license and, for subscription/trial plans,
 // a subscription record in a single transaction to prevent orphan records.
 func (s *Store) CreateLicenseWithSubscription(ctx context.Context, l *model.License, plan *model.Plan) error {
+	return s.CreateLicenseWithSubscriptionAndEmail(ctx, l, plan, nil)
+}
+
+// CreateLicenseWithSubscriptionAndEmail records a purchase and its delivery
+// email together. A failed queue write rolls back the license and subscription
+// so a retried Stripe event can fulfill the entire purchase.
+func (s *Store) CreateLicenseWithSubscriptionAndEmail(ctx context.Context, l *model.License, plan *model.Plan, email *QueuedEmail) error {
 	if err := s.prepareLicenseForInsert(l); err != nil {
 		return err
 	}
@@ -645,6 +652,11 @@ func (s *Store) CreateLicenseWithSubscription(ctx context.Context, l *model.Lice
 		}
 	}
 
+	if email != nil {
+		if err := enqueueEmailIn(ctx, tx, email.ToAddr, email.Subject, email.Body); err != nil {
+			return fmt.Errorf("queue license delivery email: %w", err)
+		}
+	}
 	return tx.Commit()
 }
 
@@ -2049,7 +2061,11 @@ type QueuedEmail struct {
 }
 
 func (s *Store) EnqueueEmail(ctx context.Context, to, subject, body string) error {
-	_, err := s.DB.NewRaw(
+	return enqueueEmailIn(ctx, s.DB, to, subject, body)
+}
+
+func enqueueEmailIn(ctx context.Context, db bun.IDB, to, subject, body string) error {
+	_, err := db.NewRaw(
 		"INSERT INTO email_queue (id, to_addr, subject, body, max_attempts) VALUES (?, ?, ?, ?, 5)",
 		newID(), to, subject, body,
 	).Exec(ctx)

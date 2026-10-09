@@ -606,7 +606,7 @@ func (s *Store) FindArtifactByPlatform(ctx context.Context, releaseID, platform 
 // publish commit. Without this, finalizing an upload during the small
 // sign-then-publish window would race the publisher into shipping an
 // empty-sig artifact.
-func (s *Store) UpdateArtifactFile(ctx context.Context, id, fileKey string, size int64, sha256, contentType string) error {
+func (s *Store) UpdateArtifactFile(ctx context.Context, id, fileKey string, size int64, sha256, contentType string, wordpress ...*model.WordPressMetadata) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -637,6 +637,12 @@ func (s *Store) UpdateArtifactFile(ctx context.Context, id, fileKey string, size
 		WHERE id = ?
 	`, fileKey, size, sha256, contentType, id).Exec(ctx); err != nil {
 		return err
+	}
+	if len(wordpress) > 0 {
+		a := &model.ReleaseArtifact{ID: id, WordPress: wordpress[0]}
+		if _, err := tx.NewUpdate().Model(a).Column("wordpress_metadata").WherePK().Exec(ctx); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

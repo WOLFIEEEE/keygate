@@ -1,3 +1,9 @@
+> **Accessible.org development fork.** The `codex/wordpress-licensing` branch
+> adds a standalone WordPress licensing/update API for Accessible Forms Pro.
+> See [local development](docs/development.md) and the
+> [WordPress adapter contract](docs/wordpress.md). Keygate's upstream license
+> and attribution remain in place.
+
 <div align="center">
 
 <img src="web/public/logo.svg" width="72" height="72" alt="Keygate" />

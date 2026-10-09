@@ -12,6 +12,7 @@ tmp/
 # Env
 .env
 .env.local
+.env.development
 .env.*.local
 
 # IDE
@@ -48,3 +49,13 @@ seed
 
 # Stray build output from `go build ./cmd/server` without -o
 /server
+
+# Merchant secrets, packages and encrypted backups
+deployment/.env
+deployment/.env.*.local
+deployment/artifacts/
+deployment/backups/
+deployment/secrets/
+__pycache__/
+*.pyc
+deployment/.restore-*/

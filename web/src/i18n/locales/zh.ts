@@ -357,6 +357,7 @@ const zh = {
   "settings.language": "语言",
   "settings.languageDesc": "界面语言。",
   "settings.brandColor": "品牌颜色",
+  "settings.brandColorHex": "品牌颜色十六进制值",
   "settings.brandColorDesc": "整个界面使用的主色调。留空则使用默认紫色。",
   "settings.logoUrl": "自定义 Logo URL",
   "settings.logoUrlDesc": "Logo 图片的 URL（推荐 SVG 格式）。留空则使用默认 Keygate Logo。",
@@ -473,6 +474,12 @@ const zh = {
   // Pagination
   "pagination.of": "/",
   "pagination.rows": "每页",
+  "pagination.rowsPerPage": "每页行数",
+  "pagination.first": "第一页",
+  "pagination.previous": "上一页",
+  "pagination.next": "下一页",
+  "pagination.last": "最后一页",
+  "pagination.page": "第 {page} 页",
 
   // Login
   "setup.title": "设置 Keygate",
@@ -510,7 +517,7 @@ const zh = {
   // Checkout
   "checkout.verifying": "正在验证您的付款...",
   "checkout.success": "付款成功！",
-  "checkout.licenseSentTo": "许可证密钥已发送至 {email}",
+  "checkout.licenseSentTo": "许可证已就绪。我们会将密钥和下载链接发送至 {email}。",
   "checkout.licenseCreated": "许可证密钥已创建",
   "checkout.error": "无法验证付款。您的许可证将稍后通过邮件发送。",
   "checkout.viewLicense": "查看我的许可证",
